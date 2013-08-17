@@ -24,26 +24,25 @@ typedef struct particle {
 } particle;
 
 
+
 /**
-  *Create a new particle
+ * Create a new wave
  *
-  *@param particle      the particle to create
-  *@param int           the energy level of the particle
-  *@param float         the mass of the particle
+ * @param _wave_function  the wave function to create
+ * @param int             the energy level of the particle
+ * @param float           the mass of the particle
 */
-void create_particle(particle *p, int n, float mass) {
-    p->mass = mass;
-    p->wave = (_wave_function *) malloc(sizeof(_wave_function));
-    p->wave->n = n;
-    p->wave->energy = HBAR*HBAR * PI*PI * n*n / (mass * L*L);
+void _create_wave(_wave_function *wave, int n, float mass) {
+    wave->n = n;
+    wave->energy = HBAR*HBAR * PI*PI * n*n / (mass * L*L);
 }
 
 /**
-  *Get the probability of finding a particle in one dimension
+ * Get the probability of finding a particle in one dimension
  *
-  *@param particle      the particle to find the probability of
-  *@param float         the position in which to find the probability at
-  *@return              the probability of finding the particle at the point x
+ * @param particle      the particle to find the probability of
+ * @param float         the position in which to find the probability at
+ * @return              the probability of finding the particle at the point x
 */
 float _probability_1d(particle *p, float x) {
     int n   =  p->wave->n;
@@ -51,13 +50,28 @@ float _probability_1d(particle *p, float x) {
     return s;
 }
 
+
+
 /**
-  *Get the probability of finding a particle in two dimensions
+ * Create a new particle
+ * 
+ * @param particle      the particle to create
+ * @param int           the energy level of the particle
+ * @param float         the mass of the particle
+*/
+void create_particle(particle *p, int n, float mass) {
+    p->mass = mass;
+    p->wave = (_wave_function *) malloc(sizeof(_wave_function));
+    _create_wave(p->wave, n, mass);
+}
+
+/**
+ * Get the probability of finding a particle in two dimensions
  *
-  *@param particle      the particle to find the probability of
-  *@param float         the x-position in which to find the probability at
-  *@param float         the y-position in which to find the probability at
-  *@return              the probability of finding the particle at the point (x, y)
+ * @param particle      the particle to find the probability of
+ * @param float         the x-position in which to find the probability at
+ * @param float         the y-position in which to find the probability at
+ * @return              the probability of finding the particle at the point (x, y)
 */
 float probability(particle *p, float x, float y) {
     if(x > 0 && x < L && y > 0 && y < L) {
@@ -65,6 +79,8 @@ float probability(particle *p, float x, float y) {
     }
     return 0;
 }
+
+
 
 int main(int argc, const char *argv[]) { 
 
