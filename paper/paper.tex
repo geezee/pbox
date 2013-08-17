@@ -195,9 +195,63 @@ essential variables I will base my results on the video.\\
 \newpage
 
 \section{Implementation}
-    \subsection{Memory Management}
-    \subsection{Optimizations}
-    \subsection{Implementations Details}
+    \subsection{Conventions}
+    Some of the conventions adopted through the code are
+    \begin{itemize}
+        \item words in function and struct names are seperated by an \_ (underscore)
+        \item words in variable names are glued together with the first letter
+              capitalized. Except in the case of the first character.
+        \item functions that start with \_ are helper functions
+              and should not be used directly. They may be considered like private
+              methods and properties in object-oriented code. No major documentation
+              is provided for these functions and the author only uses inline code
+              comments to document them
+        \item Tiny mathematical and physical constants, such as $\hbar$ are expressed
+              as float numbers without their orders. For example $\hbar = 1.054\cdot10^{-34}$
+              is defined the following way \texttt{\#define HBAR 1.054 // without e-34}
+    \end{itemize}
+
+
+\newpage
+\section{API}
+    \subsection{Structs}
+        \subsubsection{\texttt{\_wave\_function}}
+        This struct is used by the \texttt{particle} struct and describes a wave function
+        \begin{itemize}
+            \item \texttt{int n} the energy level of the particle described by the wave function
+            \item \texttt{float energy} the energy of the particle at that energy level
+        \end{itemize}
+        \subsubsection{\texttt{particle}}
+        This struct represents a particle and have the following elements
+        \begin{itemize}
+            \item \texttt{float mass} the mass of the particle
+            \item \texttt{\_wave\_function* wave} the wave function that describes the state of
+                  the particle
+        \end{itemize}
+
+    \subsection{Functions}
+        \subsubsection{\texttt{create\_particle}}
+        This function is used to create a new particle.
+        \begin{verbatim}
+void create_particle(particle* p, int n, float mass);
+        \end{verbatim}
+        \begin{itemize}
+            \item \texttt{particle* p} the particle to create
+            \item \texttt{int n} the energy level of the particle
+            \item \texttt{float mass} the mass of the particle
+        \end{itemize}
+        \subsubsection{\texttt{probability}}
+        This function finds the probability of finding the particle in the box of center $(x, y)$
+        and of dimensions $\epsilon$x$\epsilon$\\
+        The function returns a \texttt{float}; the probability of finding the particle at points (x, y)
+        \begin{verbatim}
+float probability(particle *p, float x, float y);
+        \end{verbatim}
+        \begin{itemize}
+            \item \texttt{particle* p} the particle to find the probability of
+            \item \texttt{float x} the x-coordinate of the center of the box 
+            \item \texttt{float y} the y-coordinate of the center of the box
+        \end{itemize}
 
 \newpage
 \section{Results}
