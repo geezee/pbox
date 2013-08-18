@@ -11,6 +11,7 @@
 
 #define MAX(a,b) a > b ? a : b
 #define MIN(a,b) a < b ? a : b
+#define ERROR(msg) do { fprintf(stderr, "%s(%d): %s\n", __FILE__, __LINE__, msg); exit(0); } while(0);
 
 
 typedef struct _wave_function {
@@ -65,6 +66,10 @@ float _probability_1d(_wave_function *w, float x) {
  * @param float         the mass of the particle
 */
 void create_particle(particle *p, int N, float *probabilities, float mass) {
+    float sumProba = 0;
+    for(int i=0;i<N;i++) sumProba += probabilities[i];
+    if(sumProba != 1)
+        ERROR("Sum of all the probabilities is not 1.");
     p->mass = mass;
     p->waveCount = N;
     p->wave = (_wave_function **) malloc(N*sizeof(_wave_function));
