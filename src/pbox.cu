@@ -56,6 +56,28 @@ float _probability_1d(_wave_function *w, float x) {
 }
 
 
+/**
+ * Given numbers, the function generates the next set of probabilities
+ * based on these numbers.
+ *
+ * @param int           the numbers to generate the probabilities from
+ * @param int           the length of the numbers array (should be the same
+                        for the probabilities array);
+ * @param float         array of probabilities to write to
+*/
+void next_probabilities(int *numbers, int N, float *probabilities) {
+    int sum = 0;
+    int carry = 1;
+    for(int i=N-1;i>=0;i--) {
+        numbers[i] +=  carry;
+        carry       =  numbers[i] / 10;
+        numbers[i] %=  10;
+        sum        +=  numbers[i];
+    }
+    for(int i=0;i<N;i++) {
+        probabilities[i] = 1.0f*numbers[i] / sum;
+    }
+}
 
 /**
  * Create a new particle
@@ -66,10 +88,6 @@ float _probability_1d(_wave_function *w, float x) {
  * @param float         the mass of the particle
 */
 void create_particle(particle *p, int N, float *probabilities, float mass) {
-    float sumProba = 0;
-    for(int i=0;i<N;i++) sumProba += probabilities[i];
-    if(sumProba != 1)
-        ERROR("Sum of all the probabilities is not 1.");
     p->mass = mass;
     p->waveCount = N;
     p->wave = (_wave_function **) malloc(N*sizeof(_wave_function));
@@ -106,10 +124,9 @@ int main(int argc, const char *argv[]) {
     int N = 10;
     float *pro = (float*) malloc(N*sizeof(float));
     for(int i=0;i<N;i++) pro[i] = 0.1f;
-    pro[6] = 0.05f;
-    pro[7] = 0.15f;
     create_particle(&p, N, pro, 2.5);
 
+    printf("Testing on a particle\n");
     printf("The particle has mass %f and has %d energy levels\n",
            p.mass, p.waveCount);
     for(int i=0;i<p.waveCount;i++)
@@ -137,5 +154,16 @@ int main(int argc, const char *argv[]) {
     printf("The probability of finding the particle in (%f, %f) is %.5f%% or %.3f%% of the maximum\n",
            x, y, probability(&p, x, y)*100, probability(&p, x, y)*100/max_proba);
 
+    printf("Testing on generating new probabilities\n");
+    int *numbers = (int*) malloc(N*sizeof(int));
+    float *proba = (float*) malloc(N*sizeof(float));
+    for(int i=0;i<N;i++) numbers[i] = 0;
+    numbers[0] = 1;
+    for(int i=0;i<10;i++) {
+        next_probabilities(numbers, N, proba);
+        for(int i=0;i<N;i++)
+            printf("%.3f\t", proba[i]);
+        printf("\n");
+    }
     return 0;
 }
