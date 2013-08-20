@@ -9,6 +9,7 @@
 #define E    (L/DIM)      // epsilon
 #define HBAR 1.054        // without the e-34
 
+
 #define MAX(a,b) a > b ? a : b
 #define MIN(a,b) a < b ? a : b
 #define ERROR(msg) do {                                               \
@@ -17,120 +18,13 @@
         } while(0);
 
 
-typedef struct _wave_function {
-    int n;             // the energy level of the wave function
-    float energy;      // the energy of the particle at that level
-    float probability; // the probability of getting this wave function (c^2_n)
-} _wave_function;
-
 typedef struct particle {
-    float mass;            // the mass of the particle
-    int waveCount;
+    float mass;
+    int energy_levels;
+    float *probabilities;
 } particle;
 
 
-
-/**
- * Create a new wave
- *
- * @param _wave_function  the wave function to create
- * @param int             the energy level of the particle
- * @param float           the mass of the particle
- * @param float           the probability of the wave function (c^2_n)
-*/
-void _create_wave(_wave_function *wave, int n, float mass, float p) {
-    wave->n = n;
-    wave->energy = HBAR*HBAR * PI*PI * n*n / (mass * L*L);
-    wave->probability = p;
-}
-
-
-/**
- * Given numbers, the function generates the next set of probabilities
- * based on these numbers.
- *
- * @param int            the numbers to generate the probabilities from
- * @param int            the length of the numbers array (should be the same
-                         for the probabilities array);
- * @param _wave_function array of wave function to update their probabilities
-*/
-void next_probabilities(int *numbers, int N, _wave_function** wave) {
-    int sum = 0;
-    int carry = 1;
-    for(int i=N-1;i>=0;i--) {
-        numbers[i] +=  carry;
-        carry       =  numbers[i] / 10;
-        numbers[i] %=  10;
-        sum        +=  numbers[i];
-    }
-    for(int i=0;i<N;i++) {
-        wave[i]->probability = 1.0f*numbers[i] / sum;
-    }
-}
-
-/**
- * Create a new particle
- * 
- * @param particle      the particle to create
- * @param int           the number of energy levels
- * @param float         the mass of the particle
-*/
-void create_particle(particle *p, int N, float mass) {
-    p->mass = mass;
-    p->waveCount = N;
-    p->wave = (_wave_function **) malloc(N*sizeof(_wave_function));
-    for(int i=0;i<N;i++) {
-        p->wave[i] = (_wave_function *) malloc(sizeof(_wave_function));
-        _create_wave(p->wave[i], i+1, mass, i == 0 /* 1 if i == 0, 0 otherwise */);
-    }
-}
-
-/**
- * Get the probability of finding a particle in one dimension
- *
- * @param particle      the particle to find the probability of
- * @param float         the position in which to find the probability at
- * @return              the probability of finding the particle at the point x
-*/
-__device__
-float cuda_probability_1d(_wave_function w, float x, float l) {
-    int n   =  w.n;
-    float s =  E/l - (1/(n*PI)) * cos(2*n*PI*x/l) * sin(n*PI / DIM);
-    return s;
-}
-
-/**
- * Get the probability of finding a particle in two dimensions
- *
- * @param particle      the particle to find the probability of
- * @param float         the x-position in which to find the probability at
- * @param float         the y-position in which to find the probability at
- * @return              the probability of finding the particle at the point (x, y)
-*/
-__device__
-float probability(_wave_function *w, int count, float x, float y, float l) {
-    if(x > 0 && x < l && y > 0 && y < l) {
-        float probability = 0;
-        for(int i=0;i<count;i++) {
-            return w[i];
-            probability += (1.0/(l*l) *
-                           cuda_probability_1d(w[i], x, l) *
-                           cuda_probability_1d(w[i], y, l))
-                           * (&w[i])->probability;
-        }
-        return probability;
-    }
-    return 0;
-}
-
-/**
- * CUDA kernel that finds the maximum of an array of numbers using reduction
- * and adds them to the partialMax list that will be later on processed
- *
- * @param float             the array of numbers
- * @param int               the length of the array
- * @param float             the partial list to add to
-*/
 __global__
 void cuda_max(float *numbers, int N, float *partialMax) {
     extern __shared__ float cache[];
@@ -159,14 +53,6 @@ void cuda_max(float *numbers, int N, float *partialMax) {
         partialMax[blockIdx.x] = cache[0];
 }
 
-/**
- * A function that given an array of numbers will return the maximum
- * of these numbers. I uses the cuda_max kernel.
- *
- * @param float             the array of numbers
- * @param int               the length of the array
- * @return float            the maximum of the numbers
-*/
 float max(float *numbers, int N) {
     int tpb = 256; // threads per block
     int bpg = MIN(32, (N+tpb-1)/tpb); // blocks per grid
@@ -191,57 +77,142 @@ float max(float *numbers, int N) {
     return m;
 }
 
-__global__
-void cuda_probabilities(_wave_function *w, int count, float *probabilities, float l, int dim) {
-    int i      = threadIdx.x + blockDim.x * blockIdx.x;
-    int offset = blockDim.x  * gridDim.x;
+void next_probabilities(int *numbers, int N, float* probabilities) {
+    int sum = 0;
+    int carry = 1;
+    for(int i=N-1;i>=0;i--) {
+        numbers[i] +=  carry;
+        carry       =  numbers[i] / 10;
+        numbers[i] %=  10;
+        sum        +=  numbers[i];
+    }
+    for(int i=0;i<N;i++) {
+        probabilities[i] = 1.0f*numbers[i] / sum;
+    }
+}
 
-    while(i < DIM*DIM) {
-        float x = 1.0*(i/dim)/dim;
-        float y = 1.0*(i%dim)/dim;
+void create_particle(particle *p, int N, float mass) {
+    p->mass = mass;
+    p->energy_levels = N;
+    p->probabilities = (float*) malloc(N*sizeof(float));
+    for(int i=0;i<N;i++)
+        p->probabilities[i] = (i == 0); // 1 if i == 0, 0 otherwise
+                                        // so sum(probabilities) = 1
+}
 
-        probabilities[i] = probability(w, count, x, y, l);
+__device__
+float cuda_probability_1d_device(int n, float x) {
+    float s =  E/L - (1/(n*PI)) * cos(2*n*PI*x/L) * sin(n*PI / DIM);
+    return s;
+}
+
+__device__
+float cuda_probability_2d_device(float *probability, int n, float x, float y) {
+    float s = 0;
+    for(int i=0;i<n;i++) {
+        s += (1.0/(L*L) * cuda_probability_1d_device(i+1, x) *
+                          cuda_probability_1d_device(i+1, y)) * probability[i];
+    }
+    return s;
+}
+
+__global__ 
+void cuda_max_probability(float *probabilities, int n, float *map) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    int offset = gridDim.x * blockDim.x;
+
+    while(i < DIM * DIM) {
+        float x = 1.0*((int) (i/DIM))/DIM;
+        float y = 1.0*((int) (i%DIM))/DIM;
+
+        if(x > 0 && x < L && y > 0 && y < L)
+            map[i] = cuda_probability_2d_device(probabilities, n, x, y);
+        else
+            map[i] = 0;
         i += offset;
     }
 }
 
-/**
- * A function that finds the maximum probability in the box
- *
- * @param particle          the particle to find the highest probability of
- * @return float            the highest probability
-*/
-float max_probability(particle *p) {
-    float *probabilities = (float*) malloc(DIM*DIM*sizeof(float));
-    float *devProbabilities;
-    _wave_function* devWaves;
+__global__
+void cuda_probability(float *p, int N, float x, float y, float *probability) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    int offset = blockDim.x * gridDim.x;
 
-    cudaMalloc((void**) &devWaves, p->waveCount*sizeof(_wave_function));
-    cudaMalloc((void**) &devProbabilities, DIM*DIM*sizeof(float));
-
-    cudaMemcpy(devWaves, p->wave, p->waveCount*sizeof(_wave_function), cudaMemcpyHostToDevice);
-    cudaMemset(devProbabilities, 0, DIM*DIM*sizeof(float));
-
-    cuda_probabilities<<<32, 256>>>(devWaves, p->waveCount, devProbabilities, L, DIM);
-    cudaMemcpy(probabilities, devProbabilities, DIM*DIM*sizeof(float), cudaMemcpyDeviceToHost);
-
-    for(int i=0;i<DIM*DIM;i++) {
-        printf("%f\t", probabilities[i]);
+    if(i == 0)
+        probability[0] = 0;
+    __syncthreads();
+    
+    while(i < N) {
+        if(x > 0 && x < L && y > 0 && y < L) {
+            atomicAdd(&probability[0],  ( 1.0/(L*L) *
+                                          cuda_probability_1d_device(i+1, x) *
+                                          cuda_probability_1d_device(i+1, y)
+                                        ) * p[i]);
+        } else {
+            probability[0] = 0;
+        }
+        i += offset;
     }
-    printf("\n");
-
-    cudaFree(devWaves);
-    cudaFree(devProbabilities);
-    free(probabilities);
-    return 0;
 }
 
+float probability(particle *p, float x, float y) {
+    float *devProbabilities, *devProbability, *probability;
 
+    cudaMalloc((void**) &devProbabilities, p->energy_levels*sizeof(float));
+    cudaMalloc((void**) &devProbability, sizeof(float));
+    probability = (float*) malloc(sizeof(float));
+
+    cudaMemcpy(devProbabilities, p->probabilities, p->energy_levels*sizeof(float), cudaMemcpyHostToDevice);
+    cuda_probability<<<1, p->energy_levels>>>(devProbabilities, p->energy_levels, x, y, devProbability);
+    cudaMemcpy(probability, devProbability, sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaFree(devProbabilities);
+    cudaFree(devProbability);
+    return probability[0];
+}
+
+float max_probability(particle *p) {
+    float *devProbabilities, *devMap;
+    float *map;
+
+    map = (float*) malloc(DIM * DIM * sizeof(float));
+    cudaMalloc((void**) &devProbabilities, p->energy_levels * sizeof(float));
+    cudaMalloc((void**) &devMap, DIM * DIM * sizeof(float));
+    
+    cudaMemcpy(devProbabilities, p->probabilities, p->energy_levels * sizeof(float), cudaMemcpyHostToDevice);
+    cuda_max_probability<<<32, 256>>>(devProbabilities, p->energy_levels, devMap);
+    cudaMemcpy(map, devMap, DIM * DIM * sizeof(float), cudaMemcpyDeviceToHost);
+
+    return max(map, DIM*DIM);
+}
 
 int main(int argc, const char *argv[]) { 
     particle p;
-    create_particle(&p, 10, 2.5);
-    float max_proba = max_probability(&p);
-    printf("The maximum probability is %.3f\n", max_proba);
+    float elapsed;
+    int N = 10;
+
+    create_particle(&p, N, 2.5);
+    int *numbers = (int*) malloc(N*sizeof(int));
+    for(int i=0;i<N;i++) numbers[i] = i==0;
+
+    next_probabilities(numbers, N, p.probabilities);
+    for(int i=0;i<N;i++)
+        printf("Probability of wave %d is %f\n", i+1, p.probabilities[i]);
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start, 0);
+    printf("The maximum is %f\n", max_probability(&p));
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&elapsed, start, stop);
+    printf("It took %fms to find the maximum\n", elapsed);
+
+    float x = 0.5, y = 0.5;
+    printf("The probability at (%.1f, %.1f) is %f\n", x, y, probability(&p, x, y));
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
     return 0;
 }
