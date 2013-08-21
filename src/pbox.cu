@@ -3,7 +3,7 @@
 #include <math.h>
 
 
-#define PI   3.1415
+#define PI   3.141592653589793
 #define L    1.0          // the length of the box
 #define DIM  512          // the dimensions of the window (should be 2^n)
 #define E    (L/DIM)      // epsilon
@@ -18,13 +18,22 @@
         } while(0);
 
 
+/* The struct that describes a particle */
 typedef struct particle {
-    float mass;
-    int energy_levels;
-    float *probabilities;
+    float mass;            // mass of the particle
+    int energy_levels;     // the number of energy levels
+    float *probabilities;  // the probabilitis of every energy level
 } particle;
 
 
+/**
+ * CUDA kernel that finds the maximum in buckets of numbers
+ * and fills it in the partialMax array using the reduction method
+ *
+ * @param float*            the numbers to find the maximum of
+ * @param int               the length of the array (param 1)
+ * @param float*            list of buckets containing the maximums
+*/
 __global__
 void cuda_max(float *numbers, int N, float *partialMax) {
     extern __shared__ float cache[];
@@ -53,6 +62,14 @@ void cuda_max(float *numbers, int N, float *partialMax) {
         partialMax[blockIdx.x] = cache[0];
 }
 
+/**
+ * Function that finds the maximum of an array of numbers using the
+ * cuda_max function
+ *
+ * @param float*            the array of numbers to find the maximum of
+ * @param int               the length of the array
+ * @return float            the maximum of the array
+*/
 float max(float *numbers, int N) {
     int tpb = 256; // threads per block
     int bpg = MIN(32, (N+tpb-1)/tpb); // blocks per grid
@@ -77,6 +94,14 @@ float max(float *numbers, int N) {
     return m;
 }
 
+/**
+ * Given an array of numbers, the function finds a next set
+ * of probabilities
+ *
+ * @param int*                the numbers to act upon
+ * @param int                 the length of the array
+ * @param float*              where to store the next set of probabilities
+*/
 void next_probabilities(int *numbers, int N, float* probabilities) {
     int sum = 0;
     int carry = 1;
@@ -91,6 +116,13 @@ void next_probabilities(int *numbers, int N, float* probabilities) {
     }
 }
 
+/**
+ * A function that creates a new particle
+ *
+ * @param particle*           the particle to create
+ * @param int                 the number of energy levels the particle can have
+ * @param float               the mass of the particle
+*/
 void create_particle(particle *p, int N, float mass) {
     p->mass = mass;
     p->energy_levels = N;
@@ -100,12 +132,31 @@ void create_particle(particle *p, int N, float mass) {
                                         // so sum(probabilities) = 1
 }
 
+/**
+ * CUDA device function that finds the probability of finding the
+ * particle in one dimension at the position x at the energy level n
+ *
+ * @param int                  the energy level of the particle
+ * @param float                the position of the particle
+ * @return float               the probability
+*/
 __device__
 float cuda_probability_1d_device(int n, float x) {
     float s =  E/L - (1/(n*PI)) * cos(2*n*PI*x/L) * sin(n*PI / DIM);
     return s;
 }
 
+/**
+ * CUDA device function that finds the probabiltiy of finding the 
+ * particle at a fixed position given a set of probabilities, the
+ * number of energy levels and the position
+ *
+ * @param float*                the probability of each energy level
+ * @param int                   the number of energy levels
+ * @param float                 the x-coordinate of the particle
+ * @param float                 the y-coordinate of the particle
+ * @return float                the probability
+*/
 __device__
 float cuda_probability_2d_device(float *probability, int n, float x, float y) {
     float s = 0;
@@ -116,8 +167,15 @@ float cuda_probability_2d_device(float *probability, int n, float x, float y) {
     return s;
 }
 
+/**
+ * CUDA kernel that maps the coordinate array to a probability array
+ *
+ * @param float*                 the probability set of each energy level
+ * @param int                    the number of energy levels
+ * @param float*                 the array to map to
+*/
 __global__ 
-void cuda_max_probability(float *probabilities, int n, float *map) {
+void cuda_probability_to_map(float *probabilities, int n, float *map) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int offset = gridDim.x * blockDim.x;
 
@@ -133,6 +191,16 @@ void cuda_max_probability(float *probabilities, int n, float *map) {
     }
 }
 
+/**
+ * CUDA kernel to find the probability of finding the particle at a certain
+ * position
+ *
+ * @param float*                  the probability set of each energy level
+ * @param int                     the number of energy levels
+ * @param float                   the x-coordinate of the particle
+ * @param float                   the y-coordinate of the particle
+ * @param float*                  used to write the probability to
+*/
 __global__
 void cuda_probability(float *p, int N, float x, float y, float *probability) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -155,6 +223,13 @@ void cuda_probability(float *p, int N, float x, float y, float *probability) {
     }
 }
 
+/**
+ * A function that finds the probability of finding the particle at a certain position
+ * @param particle* p               the particle
+ * @param float                     the x-coordinate of the particle
+ * @param float                     the y-coordinate of the particle
+ * @return                          the probability
+*/
 float probability(particle *p, float x, float y) {
     float *devProbabilities, *devProbability, *probability;
 
@@ -171,7 +246,17 @@ float probability(particle *p, float x, float y) {
     return probability[0];
 }
 
+/**
+ * A function that finds the maximum probability in the space of finding the particle
+ * This function is used to map the probabilities [0, max] |-> [0, 255]
+ * 
+ * @param particle*                  the particle
+ * @return                           the highest probability
+*/
 float max_probability(particle *p) {
+    /*
+     // Before analyzing the mathematical equation I would brute-force the problem
+     // by looping over all the values and picking the maximum
     float *devProbabilities, *devMap;
     float *map;
 
@@ -180,10 +265,21 @@ float max_probability(particle *p) {
     cudaMalloc((void**) &devMap, DIM * DIM * sizeof(float));
     
     cudaMemcpy(devProbabilities, p->probabilities, p->energy_levels * sizeof(float), cudaMemcpyHostToDevice);
-    cuda_max_probability<<<32, 256>>>(devProbabilities, p->energy_levels, devMap);
+    cuda_probability_to_map<<<32, 256>>>(devProbabilities, p->energy_levels, devMap);
     cudaMemcpy(map, devMap, DIM * DIM * sizeof(float), cudaMemcpyDeviceToHost);
 
     return max(map, DIM*DIM);
+    */
+
+    float probability = 0.0, p_1d = 0.0;
+    int n;
+    for(int i=0;i<10;i++) {
+        n = i+1;
+        p_1d = E/L + 1.0/(n*PI) * sin(n*PI*E);
+        probability += p->probabilities[i] * p_1d * p_1d;
+    }
+
+    return probability;
 }
 
 int main(int argc, const char *argv[]) { 
