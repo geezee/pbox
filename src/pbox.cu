@@ -282,6 +282,27 @@ float max_probability(particle *p) {
     return probability;
 }
 
+/**
+ * A function that finds the energy of the particle at a precise energy level
+ *
+ * @param particle*                 the particle
+ * @param int                       the energy level
+*/
+float energy(particle *p, int n) {
+    return (HBAR * HBAR * PI * PI * n * n) / (p->mass * L * L);
+}
+
+/**
+ * A function that finds the highest energy the particle can reach
+ * This function is useful for color mapping
+ *
+ * @param particle*                 the particle
+ * @return float                    the highest energy
+*/
+float highest_energy(particle *p) {
+    return energy(p, p->energy_levels);
+}
+
 int main(int argc, const char *argv[]) { 
     particle p;
     float elapsed;
