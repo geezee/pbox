@@ -2,6 +2,10 @@
 #include <cuda.h>
 #include <math.h>
 
+#define GL_GLEXT_PROTOTYPES
+#include "GL/glut.h"
+#include "cuda_gl_interop.h"
+
 
 #define PI   3.141592653589793
 #define L    1.0          // the length of the box
@@ -16,6 +20,10 @@
             fprintf(stderr, "%s(%d): %s\n", __FILE__, __LINE__, msg); \
             exit(0);                                                  \
         } while(0);
+
+
+GLuint buffer;
+cudaGraphicsResource *resource;
 
 
 /* The struct that describes a particle */
@@ -180,8 +188,8 @@ void cuda_probability_to_map(float *probabilities, int n, float *map) {
     int offset = gridDim.x * blockDim.x;
 
     while(i < DIM * DIM) {
-        float x = 1.0*((int) (i/DIM))/DIM;
-        float y = 1.0*((int) (i%DIM))/DIM;
+        float x = 1.0*L*((int) (i%DIM))/DIM;
+        float y = 1.0*L*((int) (i/DIM))/DIM;
 
         if(x > 0 && x < L && y > 0 && y < L)
             map[i] = cuda_probability_2d_device(probabilities, n, x, y);
@@ -254,7 +262,6 @@ float probability(particle *p, float x, float y) {
  * @return                           the highest probability
 */
 float max_probability(particle *p) {
-    /*
      // Before analyzing the mathematical equation I would brute-force the problem
      // by looping over all the values and picking the maximum
     float *devProbabilities, *devMap;
@@ -269,9 +276,8 @@ float max_probability(particle *p) {
     cudaMemcpy(map, devMap, DIM * DIM * sizeof(float), cudaMemcpyDeviceToHost);
 
     return max(map, DIM*DIM);
-    */
 
-    float probability = 0.0, p_1d = 0.0;
+    float probability = E/L, p_1d = 0.0;
     int n;
     for(int i=0;i<10;i++) {
         n = i+1;
@@ -285,51 +291,113 @@ float max_probability(particle *p) {
 /**
  * A function that finds the energy of the particle at a precise energy level
  *
- * @param particle*                 the particle
+ * @param float                     the mass of the particle
  * @param int                       the energy level
 */
-float energy(particle *p, int n) {
-    return (HBAR * HBAR * PI * PI * n * n) / (p->mass * L * L);
+__device__
+float energy(float mass, int n) {
+    return (HBAR * HBAR * PI * PI * n * n) / (mass * L * L);
 }
 
 /**
  * A function that finds the highest energy the particle can reach
  * This function is useful for color mapping
  *
- * @param particle*                 the particle
+ * @param float                     the mass of the particle
  * @return float                    the highest energy
 */
-float highest_energy(particle *p) {
-    return energy(p, p->energy_levels);
+__device__
+float highest_energy(float mass, int n) {
+    return energy(mass, n);
 }
 
-int main(int argc, const char *argv[]) { 
-    particle p;
-    float elapsed;
-    int N = 10;
+__global__
+void kernel(uchar4 *ptr, float *probabilities, int N, float max_proba) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    int offset = blockDim.x * gridDim.x;
 
-    create_particle(&p, N, 2.5);
-    int *numbers = (int*) malloc(N*sizeof(int));
-    for(int i=0;i<N;i++) numbers[i] = i==0;
+    while(i < DIM*DIM) {
+        float x = L*((int) (i%DIM))/DIM;
+        float y = L*((int) (i/DIM))/DIM;
+        float p = cuda_probability_2d_device(probabilities, N, x, y)/max_proba;
+        float e = 0;
+        for(int j=0;j<N;j++) e += probabilities[j]*energy(1.0, j+1);
+        e /= highest_energy(1.0, N);
 
-    next_probabilities(numbers, N, p.probabilities);
+        ptr[i].x = 255*p*e;
+        ptr[i].y = 20*p;
+        ptr[i].z = 255*p*(1-e);
+
+        i += offset;
+    }
+}
+
+void draw_func(void) {
+    glDrawPixels(DIM, DIM, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+    glutSwapBuffers();
+}
+void key_func(unsigned char key, int x, int y) {
+    switch(key) {
+        case 27:
+            cudaGraphicsUnregisterResource(resource);
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
+            glDeleteBuffers(1, &buffer);
+            exit(0);
+    }
+}
+
+int main(int argc, char *argv[]) { 
+    cudaDeviceProp prop;
+    int dev;
+
+    memset(&prop, 0, sizeof(cudaDeviceProp));
+    prop.major = 1;
+    prop.minor = 0;
+
+    cudaChooseDevice(&dev, &prop);
+    cudaGLSetGLDevice(dev);
+
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_RGBA);
+    glutInitWindowSize(DIM, DIM);
+    glutCreateWindow("Particle in a box simulation");
+
+    glGenBuffers(1, &buffer);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, buffer);
+    glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, DIM*DIM*4,
+    NULL, GL_DYNAMIC_DRAW_ARB);
+
+    cudaGraphicsGLRegisterBuffer(&resource, buffer, cudaGraphicsMapFlagsNone);
+
+    uchar4 *devPtr;
+    size_t size;
+    cudaGraphicsMapResources(1, &resource, NULL);
+    cudaGraphicsResourceGetMappedPointer((void**) &devPtr, &size, resource);
+
+
+    int N = atoi(argv[1]);
+    particle *p;
+    int *numbers;
+    p = (particle*) malloc(sizeof(particle));
+    create_particle(p, 20, 1.5);
+    numbers = (int*) malloc(p->energy_levels*sizeof(int));
+    for(int i=0;i<p->energy_levels;i++) numbers[i] = i==0;
     for(int i=0;i<N;i++)
-        printf("Probability of wave %d is %f\n", i+1, p.probabilities[i]);
+        next_probabilities(numbers, p->energy_levels, p->probabilities);
 
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start, 0);
-    printf("The maximum is %f\n", max_probability(&p));
-    cudaEventRecord(stop, 0);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&elapsed, start, stop);
-    printf("It took %fms to find the maximum\n", elapsed);
+    float *devP;
 
-    float x = 0.5, y = 0.5;
-    printf("The probability at (%.1f, %.1f) is %f\n", x, y, probability(&p, x, y));
+    cudaMalloc((void**) &devP, p->energy_levels*sizeof(float));
+    cudaMemcpy(devP, p->probabilities, p->energy_levels*sizeof(float), cudaMemcpyHostToDevice);
+    kernel<<<32, 256>>>(devPtr, devP, p->energy_levels, max_probability(p));
+    cudaGraphicsUnmapResources(1, &resource, NULL);
 
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    glutKeyboardFunc(key_func);
+    glutDisplayFunc(draw_func);
+
+    glutMainLoop();
+
+    cudaFree(devPtr);
+    cudaFree(devP);
     return 0;
 }
