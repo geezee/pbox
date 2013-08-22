@@ -195,86 +195,91 @@ essential variables I will base my results on the video.\\
 \newpage
 
 \section{Implementation}
+    \subsection{Synopsis}
+    This simulation will display the probability of finding the particle in sub-boxes in the box
+    as well as display the energy in the sub-box of width $\epsilon$. Each frame displays the
+    particle with a new set of probabilities for each energy level.\\\\
+    The probability of the position will be visualized by the intensity of the color. The brighter
+    the color, the higher the probability.\\\\
+    The energy however will be visualized using the standard colors assigned to energies; lower
+    energies have blue-shades while high energies have red-shades.
+
     \subsection{Conventions}
-    Some of the conventions adopted through the code are
+    Some of the conventions adopted throughout the code are
     \begin{itemize}
-        \item words in function and struct names are seperated by an \_ (underscore)
-        \item words in variable names are glued together with the first letter
-              capitalized. Except in the case of the first character.
-        \item functions that start with \_ are helper functions
-              and should not be used directly. They may be considered like private
-              methods and properties in object-oriented code. No major documentation
-              is provided for these functions and the author only uses inline code
-              comments to document them
+        \item words in functions, structs and variable names are separated by an \_ (underscore)
+        \item CUDA kernels start with the keyword \texttt{cuda\_}.\\
+              For example \texttt{cuda\_probability}
+        \item CUDA device functions start with \texttt{cuda\_} and end with \texttt{\_device}.\\
+              For example \texttt{cuda\_probability\_1d\_device}
         \item Tiny mathematical and physical constants, such as $\hbar$ are expressed
-              as float numbers without their orders. For example $\hbar = 1.054\cdot10^{-34}$
-              is defined the following way \texttt{\#define HBAR 1.054 // without e-34}
+              as float numbers without their orders.\\ For example $\hbar = 1.054\cdot10^{-34}$
+              is defined as \texttt{\#define HBAR 1.054}
     \end{itemize}
 
+    \subsection{Brightness and Color mapping}
+        \subsubsection{Brightness}
+        The intensity of the colors denote the probability of finding the particle. Since
+        probabilities are always between 0 and 1, converting them to intensities is just
+        a matter of mapping the probabilities from $[0, 1]$ to $[0, 255]$.\\\\
+        However $\epsilon$ is a small number, so the probability is always small; usually
+        less than $0.1\%$. Therefore we need to find the highest probability in the space
+        and remap from $[0, \text{max}]$ to $[0, 255]$. At first I have tried to brute force
+        the problem exploiting my GPU using functions to find maximums using reduction. But
+        the process of finding the highest probability of a particle with 10 energy levels
+        inside a box divided into 262,144 boxes took around 28ms. Allowing me to get only
+        35fps in the animation.\\
+        A new solution needed to be adopted and I went over the equations again to try and
+        find that maximum analytically. My results are:\\\\
+        For $p(\alpha)$ to be maximal
+        $$\frac{\epsilon}{L} - \frac{1}{n_{\alpha}\pi} \sin(\frac{n_{\alpha}\pi}{L}\epsilon)
+        \cos{2\frac{n_{\alpha}\pi}{L}\alpha}$$
+        needs to be maximal.  And this is achieved when $\cos{x} = -1$ which is possible
+        since $0 \leq x \leq 2\pi$. Therefore the highest probability for one energy
+        level is: 
+        $$\frac{\epsilon}{L} + \frac{1}{n_{\alpha}\pi} \sin(\frac{n_{\alpha}\pi}{L}\epsilon)$$
+        Following similar analysis we can deduce that the highest probability (denoted by
+        $m$) is close to,
+        but not exactly:
+        $$m = m_x . m_y$$
+        $$m_{\alpha} = \frac{\epsilon}{L} + \sum_i \left ( c^2_i \frac{1}{n_{\alpha_i}\pi}
+        \sin\left(\frac{n_{\alpha_i}\pi}{L}\epsilon\right) \right )$$\\
+        
+        \subsubsection{Tint and Color}
+        The tint in the color represents the energy of the particle. Red is the highest
+        energy and blue is the lowest. If we can map the energy in an interval between
+        0 and 1 we can easily get the RGB values. The following equation can be applied
+        $$ \begin{bmatrix} R_{xy} \\ G_{xy} \\ B_{xy} \end{bmatrix} = P(x, y)
+        \begin{bmatrix} 255E \\ 20 \\ 255(1-E) \end{bmatrix} $$
+        Where $P(x, y)$ is the probability of finding the particle at $(x, y)$ and between
+        0 and 1. And $E$ is the energy remapped between 0 and 1. \\\\
+        To problem of remapping the energy is easy to solve. Through mathematical analysis
+        we can show that the highest energy we can find is
+        $$ E_{max} = (n^2_{max_x} + n^2_{max_y})\frac{\hbar^2\pi^2}{2mL^2} $$
+        And therefore we can remap any energy we find to a value in the interval $[0, 1]$
+        and find the corresponding RGB values.
 
 \newpage
 \section{API}
-    \subsection{Structs}
-        \subsubsection{\texttt{\_wave\_function}}
-        This struct is used by the \texttt{particle} struct and describes a wave function
-        \begin{itemize}
-            \item \texttt{int n} the energy level of the particle described by the wave function
-            \item \texttt{float energy} the energy of the particle at that energy level
-        \end{itemize}
-        \subsubsection{\texttt{particle}}
-        This struct represents a particle and have the following elements
-        \begin{itemize}
-            \item \texttt{float mass} the mass of the particle
-            \item \texttt{\_wave\_function* wave} the wave function that describes the state of
-                  the particle
-        \end{itemize}
-
-    \subsection{Functions}
-        \subsubsection{\texttt{create\_particle}}
-        This function is used to create a new particle.
-        \begin{verbatim}
-void create_particle(particle* p, int n, float mass);
-        \end{verbatim}
-        \begin{itemize}
-            \item \texttt{particle* p} the particle to create
-            \item \texttt{int n} the energy level of the particle
-            \item \texttt{float mass} the mass of the particle
-        \end{itemize}
-        \subsubsection{\texttt{probability}}
-        This function finds the probability of finding the particle in the box of center $(x, y)$
-        and of dimensions $\epsilon$x$\epsilon$\\
-        The function returns a \texttt{float}; the probability of finding the particle at points (x, y)
-        \begin{verbatim}
-float probability(particle *p, float x, float y);
-        \end{verbatim}
-        \begin{itemize}
-            \item \texttt{particle* p} the particle to find the probability of
-            \item \texttt{float x} the x-coordinate of the center of the box 
-            \item \texttt{float y} the y-coordinate of the center of the box
-        \end{itemize}
 
 \newpage
 \section{Results}
 
 \newpage
-\section{Code}
-    \subsection{Code}
-\begin{verbatim}
-\end{verbatim}
-    \subsection{License: GNU General Public License}
-    Copyright (C) 2013 George Zakhour\\
+\section{Code License: GNU General Public License}
+Copyright (C) 2013 George Zakhour\\
 
-    This program is free software: you can redistribute it and/or modify it under
-    the terms of the GNU General Public License as published by the Free Software
-    Foundation, either version 3 of the License, or (at your option) any later
-    version.\\
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.\\
 
-    This program is distributed in the hope that it will be useful, but WITHOUT ANY
-    WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-    PARTICULAR PURPOSE. See the GNU General Public License for more details.\\
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.\\
 
-    You should have received a copy of the GNU General Public License along with
-    this program. If not, see http://www.gnu.org/licenses/.\\
+You should have received a copy of the GNU General Public License along with
+this program. If not, see http://www.gnu.org/licenses/.\\
 
 
 \end{document}
