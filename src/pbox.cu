@@ -106,6 +106,10 @@ float max(float *numbers, int N) {
  * Given an array of numbers, the function finds a next set
  * of probabilities
  *
+ * TODO Probabilities can be expressed as sine waves such that
+ *      the period of a wave is set such as every sub wave can
+ *      occur
+ *
  * @param int*                the numbers to act upon
  * @param int                 the length of the array
  * @param float*              where to store the next set of probabilities
@@ -113,7 +117,7 @@ float max(float *numbers, int N) {
 void next_probabilities(int *numbers, int N, float* probabilities) {
     int sum = 0;
     int carry = 1;
-    for(int i=0;i<N;i++) {
+    for(int i=N-1;i>=0;i--) {
         numbers[i] +=  carry;
         carry       =  numbers[i] / 10;
         numbers[i] %=  10;
@@ -262,8 +266,6 @@ float probability(particle *p, float x, float y) {
  * @return                           the highest probability
 */
 float max_probability(particle *p) {
-     // Before analyzing the mathematical equation I would brute-force the problem
-     // by looping over all the values and picking the maximum
     float *devProbabilities, *devMap;
     float *map;
 
@@ -277,6 +279,9 @@ float max_probability(particle *p) {
 
     return max(map, DIM*DIM);
 
+    /*
+    // This algorithm failed for many waves
+    // I had to fall back to the original bruteforce algorithm written above
     float probability = E/L, p_1d = 0.0;
     int n;
     for(int i=0;i<10;i++) {
@@ -286,6 +291,7 @@ float max_probability(particle *p) {
     }
 
     return probability;
+    */
 }
 
 /**
@@ -311,6 +317,96 @@ float highest_energy(float mass, int n) {
     return energy(mass, n);
 }
 
+__global__
+void kernel(uchar4 *ptr, float *probabilities, int N, float max_proba) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    int offset = blockDim.x * gridDim.x;
+
+    while(i < DIM*DIM) {
+        float x = L*((int) (i%DIM))/DIM;
+        float y = L*((int) (i/DIM))/DIM;
+        float p = cuda_probability_2d_device(probabilities, N, x, y)/max_proba;
+        float e = 0;
+        for(int j=0;j<N;j++) e += probabilities[j]*energy(1.0, j+1);
+        e /= highest_energy(1.0, N);
+
+        ptr[i].x = 255*p*e;
+        ptr[i].y = 20*p;
+        ptr[i].z = 255*p*(1-e);
+
+        i += offset;
+    }
+}
+
+void draw_func(void) {
+    glDrawPixels(DIM, DIM, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+    glutSwapBuffers();
+}
+void key_func(unsigned char key, int x, int y) {
+    switch(key) {
+        case 27:
+            cudaGraphicsUnregisterResource(resource);
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
+            glDeleteBuffers(1, &buffer);
+            exit(0);
+    }
+}
+
 int main(int argc, char *argv[]) { 
+    cudaDeviceProp prop;
+    int dev;
+
+    memset(&prop, 0, sizeof(cudaDeviceProp));
+    prop.major = 1;
+    prop.minor = 0;
+
+    cudaChooseDevice(&dev, &prop);
+    cudaGLSetGLDevice(dev);
+
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_RGBA);
+    glutInitWindowSize(DIM, DIM);
+    glutCreateWindow("Particle in a box simulation");
+
+    glGenBuffers(1, &buffer);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, buffer);
+    glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, DIM*DIM*4,
+    NULL, GL_DYNAMIC_DRAW_ARB);
+
+    cudaGraphicsGLRegisterBuffer(&resource, buffer, cudaGraphicsMapFlagsNone);
+
+    uchar4 *devPtr;
+    size_t size;
+    cudaGraphicsMapResources(1, &resource, NULL);
+    cudaGraphicsResourceGetMappedPointer((void**) &devPtr, &size, resource);
+
+
+    int N = atoi(argv[1]);
+    particle *p;
+    int *numbers;
+    p = (particle*) malloc(sizeof(particle));
+    create_particle(p, 10, 1.5);
+    numbers = (int*) malloc(p->energy_levels*sizeof(int));
+    for(int i=0;i<p->energy_levels;i++) numbers[i] = 9*(i==0);
+    for(int i=0;i<N;i++)
+        next_probabilities(numbers, p->energy_levels, p->probabilities);
+
+    float *devP;
+
+    cudaMalloc((void**) &devP, p->energy_levels*sizeof(float));
+    cudaMemcpy(devP, p->probabilities, p->energy_levels*sizeof(float), cudaMemcpyHostToDevice);
+    kernel<<<32, 256>>>(devPtr, devP, p->energy_levels, max_probability(p));
+    cudaGraphicsUnmapResources(1, &resource, NULL);
+    printf("The probabilities are:\n");
+    for(int i=0;i<p->energy_levels;i++)
+        printf("Energy level (%d): %f\n", i+1, p->probabilities[i]);
+
+    glutKeyboardFunc(key_func);
+    glutDisplayFunc(draw_func);
+
+    glutMainLoop();
+
+    cudaFree(devPtr);
+    cudaFree(devP);
     return 0;
 }
