@@ -7,4 +7,4 @@ all:
 clean:
 	rm pbox
 run:
-	./pbox
+	./pbox 10

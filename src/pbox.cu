@@ -103,28 +103,22 @@ float max(float *numbers, int N) {
 }
 
 /**
- * Given an array of numbers, the function finds a next set
- * of probabilities
+ * The set of probabilities can be expressed as a bunch of sine waves
+ * For more information read section 4.4 (Next set of probabilities) on
+ * page 9 in the paper
  *
- * TODO Probabilities can be expressed as sine waves such that
- *      the period of a wave is set such as every sub wave can
- *      occur
- *
- * @param int*                the numbers to act upon
+ * @param float               the time
  * @param int                 the length of the array
  * @param float*              where to store the next set of probabilities
 */
-void next_probabilities(int *numbers, int N, float* probabilities) {
-    int sum = 0;
-    int carry = 1;
-    for(int i=N-1;i>=0;i--) {
-        numbers[i] +=  carry;
-        carry       =  numbers[i] / 10;
-        numbers[i] %=  10;
-        sum        +=  numbers[i];
+void next_probabilities(float t, int N, float* probabilities) {
+    float sum = 0;
+    for(int i=0;i<N;i++) {
+        probabilities[i] = abs(sin(pow(10, 1-i)*t));
+        sum += probabilities[i];
     }
     for(int i=0;i<N;i++) {
-        probabilities[i] = 1.0f*numbers[i] / sum;
+        probabilities[i] /= sum;
     }
 }
 
@@ -383,13 +377,9 @@ int main(int argc, char *argv[]) {
 
     int N = atoi(argv[1]);
     particle *p;
-    int *numbers;
     p = (particle*) malloc(sizeof(particle));
     create_particle(p, 10, 1.5);
-    numbers = (int*) malloc(p->energy_levels*sizeof(int));
-    for(int i=0;i<p->energy_levels;i++) numbers[i] = 9*(i==0);
-    for(int i=0;i<N;i++)
-        next_probabilities(numbers, p->energy_levels, p->probabilities);
+    next_probabilities(10041.0, p->energy_levels, p->probabilities);
 
     float *devP;
 
