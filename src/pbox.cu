@@ -117,9 +117,8 @@ void next_probabilities(float t, int N, float* probabilities) {
         probabilities[i] = abs(sin(pow(10, 1-i)*t));
         sum += probabilities[i];
     }
-    for(int i=0;i<N;i++) {
-        probabilities[i] /= sum;
-    }
+    // Normalize the probabilities
+    for(int i=0;i<N;i++) probabilities[i] /= sum;
 }
 
 /**
