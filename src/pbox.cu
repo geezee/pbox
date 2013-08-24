@@ -1,29 +1,25 @@
 #include <stdio.h>
 #include <cuda.h>
+#include <string.h>
 #include <math.h>
+#include <time.h>
 
 #define GL_GLEXT_PROTOTYPES
-#include "GL/glut.h"
-#include "cuda_gl_interop.h"
+#include <GL/glut.h>
+
+#include <cuda_runtime.h>
+#include <cuda_gl_interop.h>
 
 
 #define PI   3.141592653589793
-#define L    1.0          // the length of the box
-#define DIM  512          // the dimensions of the window (should be 2^n)
-#define E    (L/DIM)      // epsilon
-#define HBAR 1.054        // without the e-34
+#define L    1.0            // the length of the box
+#define DIM  512            // the dimensions of the window (should be 2^n)
+#define E    (L/DIM)        // epsilon
+#define HBAR 1.054          // without the e-34
 
 
 #define MAX(a,b) a > b ? a : b
 #define MIN(a,b) a < b ? a : b
-#define ERROR(msg) do {                                               \
-            fprintf(stderr, "%s(%d): %s\n", __FILE__, __LINE__, msg); \
-            exit(0);                                                  \
-        } while(0);
-
-
-GLuint buffer;
-cudaGraphicsResource *resource;
 
 
 /* The struct that describes a particle */
@@ -32,6 +28,37 @@ typedef struct particle {
     int energy_levels;     // the number of energy levels
     float *probabilities;  // the probabilitis of every energy level
 } particle;
+
+
+/** global variables used in the code */
+cudaGraphicsResource *resource;
+GLuint   buffer;
+float    INCREASE_TIME = 0.01;           // number to increase the time by
+particle p;                              // the particle
+float    t             = INCREASE_TIME;  // starting time
+int      frames        = 0;              // number of frames
+float    total_time    = 0.0f;           // total time
+int      PAUSE         = 0;              // whether the animation is paused
+
+
+/**
+ * Function headers
+*/
+float max(float*, int);
+void  next_probabilities(float, int, float*);
+void  create_particle(particle*, int, float);
+float probability(particle*, float, float);
+float max_probability(particle*);
+void  initGL(int*, char**);
+void  display();
+void  key(unsigned char, int, int);
+void  free_resources();
+void  createVBO(GLuint*, cudaGraphicsResource**, unsigned int);
+void  runCuda(cudaGraphicsResource**);
+void  launch_kernel(uchar4);
+void  runCuda(cudaGraphicsResource **resource);
+void  run(int, char**);
+void  usage(char*);
 
 
 /**
@@ -99,6 +126,7 @@ float max(float *numbers, int N) {
     cudaFree(devNumbers);
     cudaFree(devPartialMax);
     free(partialMax);
+    free(numbers);
     return m;
 }
 
@@ -248,7 +276,10 @@ float probability(particle *p, float x, float y) {
 
     cudaFree(devProbabilities);
     cudaFree(devProbability);
-    return probability[0];
+    float *proba;
+    proba = &probability[0];
+    free(probability);
+    return *proba;
 }
 
 /**
@@ -269,6 +300,9 @@ float max_probability(particle *p) {
     cudaMemcpy(devProbabilities, p->probabilities, p->energy_levels * sizeof(float), cudaMemcpyHostToDevice);
     cuda_probability_to_map<<<32, 256>>>(devProbabilities, p->energy_levels, devMap);
     cudaMemcpy(map, devMap, DIM * DIM * sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaFree(devProbabilities);
+    cudaFree(devMap);
 
     return max(map, DIM*DIM);
 
@@ -331,71 +365,196 @@ void kernel(uchar4 *ptr, float *probabilities, int N, float max_proba) {
     }
 }
 
-void draw_func(void) {
-    glDrawPixels(DIM, DIM, GL_RGBA, GL_UNSIGNED_BYTE, 0);
-    glutSwapBuffers();
+
+/////////////////////////// GUI PART /////////////////////////////////////
+/**
+ * Initialize the OpenGL environment
+ *
+ * @param int       length of next paramater
+ * @param char      the parameters to the environment
+*/
+void initGL(int *argc, char **argv) {
+    glutInit(argc, argv);
+    glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
+    glutInitWindowSize(DIM, DIM);
+    glutCreateWindow("Particle in a box simulation");
+    glutDisplayFunc(display);
+
+    glClearColor(0.0, 0.0, 0.0, 1.0);
+    glDisable(GL_DEPTH_TEST);
 }
-void key_func(unsigned char key, int x, int y) {
-    switch(key) {
+
+/**
+ * The display function that runs on every iteration
+*/
+void display() {
+    cudaEvent_t start, stop;
+    cudaEventCreate(&stop);
+    cudaEventCreate(&start);
+    cudaEventRecord(start, 0);
+    
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, buffer);
+    glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, DIM*DIM*4, NULL, GL_DYNAMIC_DRAW_ARB);
+    cudaGraphicsGLRegisterBuffer(&resource, buffer, cudaGraphicsMapFlagsNone);
+    glClear(GL_COLOR_BUFFER_BIT);
+    runCuda(&resource);
+    glDrawPixels(DIM, DIM, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+    glutSwapBuffers();
+    t += (1-PAUSE)*INCREASE_TIME;
+
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(stop);
+    float diff;
+    cudaEventElapsedTime(&diff, start, stop);
+
+    glutPostRedisplay();
+
+    total_time += diff;
+    frames++;
+
+    printf("%-5.3f (Average time per frame %.5f ms) (+%.3f)\r",
+           t, total_time/frames, INCREASE_TIME);
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
+}
+
+/**
+ * Manage key strokes
+ *
+ * @param unsigned char         the character pressed
+ * @param int                   x-location of the pressign
+ * @param int                   y-location of the pressign
+*/
+void key(unsigned char k, int x, int y) {
+    switch(k) {
         case 27:
-            cudaGraphicsUnregisterResource(resource);
-            glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
-            glDeleteBuffers(1, &buffer);
+            free_resources();
+            printf("\n");
             exit(0);
+        case '.':
+            INCREASE_TIME *= 1.05; break;
+        case ',':
+            INCREASE_TIME *= 0.95; break;
+        case '0':
+            t = 0.01f; break;
+        case ' ':
+            PAUSE = 1-PAUSE; if(PAUSE == 1) glutPostRedisplay(); break;
     }
 }
 
-int main(int argc, char *argv[]) { 
+/**
+ * Free the OpenGL resources
+*/
+void free_resources() {
+    cudaGraphicsUnregisterResource(resource);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
+    glDeleteBuffers(1, &buffer);
+}
+
+/**
+ * Function that creates the buffer and the resource for the environment
+ *
+ * @param GLuint                    the buffer used by OpenGL
+ * @param cudaGraphicsResource      the cuda resource to link to the buffer
+*/
+void createVBO(GLuint *buffer, cudaGraphicsResource **resource,
+               unsigned int flags) {
+    glGenBuffers(1, buffer);
+    glBindBuffer(GL_ARRAY_BUFFER, *buffer);
+
+    unsigned int size = DIM * DIM * 4 * sizeof(float);
+    glBufferData(GL_ARRAY_BUFFER, size, 0, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    cudaGraphicsGLRegisterBuffer(resource, *buffer, flags);
+}
+
+/**
+ * Kernel launcher
+ *
+ * @param uchar4                the pixel array
+*/
+void launch_kernel(uchar4 *pos) {
+    float *devProbabilities;
+    int N = p.energy_levels;
+    cudaMalloc((void**) &devProbabilities, N*sizeof(float));
+    cudaMemcpy(devProbabilities, p.probabilities, N*sizeof(float), cudaMemcpyHostToDevice);
+    kernel<<<32, 256>>>(pos, devProbabilities, N, max_probability(&p));
+    next_probabilities(t, N, (p.probabilities));
+    cudaFree(devProbabilities);
+}
+
+/**
+ * Function that creates the resources for the kernel and launches it
+ *
+ * @param cudaGraphicsResource  the cuda resource
+*/
+void runCuda(cudaGraphicsResource **resource) {
+    uchar4 *devPtr;
+    size_t size;
+
+    cudaGraphicsMapResources(1, resource, 0);
+    cudaGraphicsResourceGetMappedPointer((void**) &devPtr, &size, *resource);
+    launch_kernel(devPtr);
+    cudaGraphicsUnmapResources(1, resource, 0);
+}
+
+
+/**
+ * The function that runs everything
+ *
+ * @param int       length of next paramater
+ * @param char      the parameters to the environment
+*/
+void run(int argc, char **argv) {
     cudaDeviceProp prop;
     int dev;
-
     memset(&prop, 0, sizeof(cudaDeviceProp));
     prop.major = 1;
     prop.minor = 0;
-
     cudaChooseDevice(&dev, &prop);
     cudaGLSetGLDevice(dev);
 
-    glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_RGBA);
-    glutInitWindowSize(DIM, DIM);
-    glutCreateWindow("Particle in a box simulation");
+    initGL(&argc, argv);
 
-    glGenBuffers(1, &buffer);
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, buffer);
-    glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, DIM*DIM*4,
-    NULL, GL_DYNAMIC_DRAW_ARB);
-
-    cudaGraphicsGLRegisterBuffer(&resource, buffer, cudaGraphicsMapFlagsNone);
-
-    uchar4 *devPtr;
-    size_t size;
-    cudaGraphicsMapResources(1, &resource, NULL);
-    cudaGraphicsResourceGetMappedPointer((void**) &devPtr, &size, resource);
-
-
-    int N = atoi(argv[1]);
-    particle *p;
-    p = (particle*) malloc(sizeof(particle));
-    create_particle(p, 10, 1.5);
-    next_probabilities(10041.0, p->energy_levels, p->probabilities);
-
-    float *devP;
-
-    cudaMalloc((void**) &devP, p->energy_levels*sizeof(float));
-    cudaMemcpy(devP, p->probabilities, p->energy_levels*sizeof(float), cudaMemcpyHostToDevice);
-    kernel<<<32, 256>>>(devPtr, devP, p->energy_levels, max_probability(p));
-    cudaGraphicsUnmapResources(1, &resource, NULL);
-    printf("The probabilities are:\n");
-    for(int i=0;i<p->energy_levels;i++)
-        printf("Energy level (%d): %f\n", i+1, p->probabilities[i]);
-
-    glutKeyboardFunc(key_func);
-    glutDisplayFunc(draw_func);
+    glutDisplayFunc(display);
+    glutKeyboardFunc(key);
+    createVBO(&buffer, &resource, cudaGraphicsMapFlagsWriteDiscard);
+    runCuda(&resource);
 
     glutMainLoop();
+}
 
-    cudaFree(devPtr);
-    cudaFree(devP);
+
+
+void usage(char* program_name) {
+    printf("A particle in a box simulation\n");
+    printf("Usage: %s n\n", program_name);
+    printf("n\tThe number of energy levels to simulate (default is 5)\n\n");
+    printf("Pressing these following keys will:\n");
+    printf(".\tIncrease the time delay\n");
+    printf(",\tDescrease the time delay\n");
+    printf("<space>\tToggle pausing\n");
+    printf("0\tReset the animation\n");
+    printf("<esc>\tQuit\n\n");
+}
+
+
+///////////////////////////// MAIN FUNCTION //////////////////////////////////
+int main(int argc, char *argv[]) { 
+    usage(argv[0]);
+    int N = 5;
+    if(argc > 1) {
+        if(atoi(argv[1]) > 0)
+            N = atoi(argv[1]);
+        else
+            printf("\033[01;31mWARNING: You are trying to simulate a negative");
+            printf("number of wave functions. Will fall back to %d (default)\033[22;m\n",N);
+    }
+    printf("\033[22;32mSimulating with %d wave functions\033[22;m\n", N);
+    create_particle(&p, N, 0.003f);
+    run(argc, argv);
     return 0;
 }
