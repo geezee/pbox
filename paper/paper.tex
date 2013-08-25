@@ -3,6 +3,7 @@
 \usepackage{amsmath}
 \usepackage{hyperref}
 \hypersetup{colorlinks=false}
+\def\mar{\hspace*{5mm}}
 
 \author{George Zakhour}
 \title{{\bf Simulating a two dimensional particle in a square quantum box with
@@ -218,7 +219,8 @@ essential variables I will base my results on the video.\\
     \end{itemize}
 
     \subsection{Brightness and Color mapping}
-        \subsubsection{Brightness}
+        \subsubsection{Brightness} \label{sec:brightness}
+        \label{sec:brightness}
         The intensity of the colors denote the probability of finding the particle. Since
         probabilities are always between 0 and 1, converting them to intensities is just
         a matter of mapping the probabilities from $[0, 1]$ to $[0, 255]$.\\\\
@@ -254,6 +256,7 @@ essential variables I will base my results on the video.\\
         usually 32) and pick the maximum of these. The following illustration describes how the maximum
         reduction algorithm works
         \begin{figure}[hb]
+            \label{fig:reduction}
             \centering
                 \includegraphics[width=8cm]{graphics/max_reduction.png}
             \caption{Finding the maximum element in an array using reduction}
@@ -262,7 +265,7 @@ essential variables I will base my results on the video.\\
         and the width of the window need to be a power of 2 for this algorithm to work effectively.
         No solution has been made up yet to generalize the dimensions of the window.
         
-        \subsubsection{Tint and Color}
+        \subsubsection{Tint and Color}\label{sec:colormap}
         The tint in the color represents the energy of the particle. Red is the highest
         energy and blue is the lowest. If we can map the energy in an interval between
         0 and 1 we can easily get the RGB values. The following equation can be applied
@@ -277,6 +280,7 @@ essential variables I will base my results on the video.\\
         and find the corresponding RGB values.
 
         \subsection{Next set of probabilities}
+        \label{sec:nextproba}
         Every frame in the animation consists of a new set of probabilities close to the ones of the
         previous frame. A problem came up and that is how to generate new set of probabilities close
         to the ones in the previous frame to insure the smooth animation between the frames.\\\\
@@ -326,11 +330,300 @@ essential variables I will base my results on the video.\\
             P_{n}(t) = \left| sin\left( \frac{10^{1-n}}{\pi}t \right)\right|
         \end{align}
 
+    \subsection{(G)UI}
+    The GUI will be farely simple, a window where the simulation is drawn on. The user can
+    control the simulation by keystrokes listed bellow.
+    \begin{center}
+        \begin{tabular}{|r|r|}
+        \hline
+            . & Increase the time offset \\ \hline
+            , & Decrease the time offset \\ \hline
+            SPACE & Toggle pausing \\ \hline
+            0 & Reset the animate (t = 0) \\ \hline
+            ESC & Quit the simulation \\ \hline
+        \end{tabular}
+    \end{center}
+    As well, the user can control the number of wave functions that are being simulated using
+    command line arguments as follow
+    \begin{verbatim}pbox n\end{verbatim}
+    Where \verb|n| is the number of wave functions the user wishes to simulate.
+
 \newpage
 \section{API}
+    \subsection{Structures}
+        \subsubsection{particle}
+        {\bf Members}
+        \begin{itemize}
+            \item \begin{verbatim}float mass\end{verbatim} The mass of the particle.
+            \item \begin{verbatim}int energy_levels\end{verbatim} The number
+                  of energy levels the particle has, i.e. the number of wave
+                  functions that describe the particle.
+            \item \begin{verbatim}float *particles\end{verbatim} The
+                  probabilities of each wave function. The length of the array
+                  this variable points to should be \verb|energy_levels|.
+        \end{itemize}
+
+    \vspace{1cm}
+    \subsection{Global Variables}
+    The program uses these global variables
+    \begin{itemize}
+        \item \verb|cudaGraphicsResource *resource|\\\mar- The graphics resource that is
+              linked to the OpenGL environment.
+        \item \verb|GLuint buffer|\\\mar- The buffer used by OpenGL.
+        \item \verb|float INCREASE_TIME|\\\mar- The time offset used to increase the time
+              between the frames.
+        \item \verb|particle p|\\\mar- The particle that the program is about.
+        \item \verb|float t|\\\mar- The current time (set as the offset).
+        \item \verb|int frames|\\\mar- The number of frames.
+        \item \verb|float total_time|\\\mar- The total time.
+        \item \verb|int PAUSE|\\\mar- Whether the animation is paused.
+    \end{itemize}
+
+    \newpage
+    \subsection{Functions}
+        \vspace{1cm}
+        \subsubsection{float max(float *numbers, int N)}
+        This function finds the maximum number in an array of numbers using reduction
+        as described in ~\ref{fig:reduction}.\\
+        \\{\bf Parameters}\\
+        \verb|float *numbers|\\\mar- A pointer of the array to find the maximum of.\\
+        \verb|int N|\\\mar- The length of \verb|numbers|. {\bf Should be a power of 2}.\\
+        \\{\bf Returns}\\
+        \verb|float|, the maximum number in the array.
+
+        \vspace{1cm}
+        \subsubsection{void next\_probabilities(float t, int N, float *probabilities)}
+        This function generates a new set of probabilities as described in ~\ref{sec:nextproba}.
+        \\\\{\bf Parameters}\\
+        \verb|float t|\\\mar- The time parameter required in the algorithm.\\
+        \verb|int N|\\\mar- the number of parameters to generate, i.e. the length of
+        the next parameter.\\
+        \verb|float *probabilities|\\\mar- The array to write the new probabilities to.
+
+        \vspace{1cm}
+        \subsubsection{void create\_particle(particle *p, int N, float mass)}
+        This function creates a new particle.\\
+        \\{\bf Parameters}\\
+        \verb|particle *p|\\\mar- The particle to store the new particle in.\\
+        \verb|int N|\\\mar- The number of wave functions (energy levels) that describe
+        the particle.\\
+        \verb|float mass|\\\mar- The mass of the particle
+
+        \vspace{1cm}
+        \subsubsection{float probability(particle *p, float x, float y)}
+        This function finds the probability of finding a particle inside a box of center
+        $(x, y)$ and of width and height $\epsilon$.\\
+        \\{\bf Parameters}\\
+        \verb|particle *p|\\\mar- The particle to act on\\
+        \verb|float x|\\\mar- The x-coordinate of the particle\\
+        \verb|float y|\\\mar- The y-coordinate of the particle\\
+        \\{\bf Returns}\\
+        \verb|float|, the probability of finding the particle at $(x, y)$
+
+        \vspace{1cm}
+        \subsubsection{float max\_probability(particle *p)}
+        This function finds the highest probability of existing at a position $(x, y)$
+        in the space, i.e. inside the box. The function is used to later on map the
+        probabilities from $[0, \text{max}]$ to $[0, 255]$ for color-brightness purposes.
+        The algorithm adopted is described in ~\ref{sec:brightness}.\\
+        \\{\bf Parameters}\\
+        \verb|particle *p|\\\mar- The particle to find the highest probability of existing\\
+        \\{\bf Returns}\\
+        \verb|float|, the highest probability to exist.
+
+        \vspace{1cm}
+        \subsubsection{void initGL(int *argc, char **argv)}
+        This function initializes the OpenGL environment.\\
+        \\{\bf Parameters}\\
+        \verb|int *argc|\\\mar- The length of the next parameter.\\
+        \verb|char **argv|\\\mar- The parameters supplied to the OpenGL environment.
+        
+        \vspace{1cm}
+        \subsubsection{void display()}
+        This function takes care of drawing the output on the canvas on every iteration.
+        As well it prints out the current time, the average time per frame in milliseconds
+        and the offset that is used to increase the time.
+
+        \vspace{1cm}
+        \subsubsection{void key(unsigned char k, int x, int y)}
+        This function manages the keystrokes in the canvas.\\
+        \\{\bf Parameters}\\
+        \verb|unsigned char k|\\\mar- The character pressed.\\
+        \verb|int x|\\\mar- The x-coordinate where the character is pressed.\\
+        \verb|int y|\\\mar- The y-coordinate where the character is pressed.
+
+        \vspace{1cm}
+        \subsubsection{void free\_resources()}
+        This function is used to clean after closing the window, i.e. free the resources.
+
+        \vspace{1cm}
+        \subsubsection{void createVBO(GLUint *buffer, cudaGraphicsResource **resource,
+            unsigned int flags)}
+        This function initializes the buffer and the resources that are used by OpenGL.\\
+        \\{\bf Parameters}\\
+        \verb|GLuint *buffer|\\\mar- The buffer used by OpenGL.\\
+        \verb|cudaGraphicsResource **resource|\\\mar- The CUDA resource to link to the buffer\\
+        \verb|unsigned int flags|\\\mar- The flags used by OpenGL.
+
+        \vspace{1cm}
+        \subsubsection{void launch\_kernel(uchar4 *pos)}
+        This function launches the kernel that fills the CUDA resource which will be used
+        to draw on the canvas.\\
+        \\{\bf Parameters}\\
+        \verb|uchar4 *pos|\\\mar- The array of pixel data
+
+        \vspace{1cm}
+        \subsubsection{void runCuda(cudaGraphicsResource **resource)}
+        This function creates the resources for the kernel and launches it.\\
+        \\{\bf Parameters}\\
+        \verb|cudaGraphicsResource **resource|\\\mar- The CUDA resource.
+
+        \vspace{1cm}
+        \subsubsection{void run(int argc, char **argv)}
+        This function runs everything, i.e. initializes the environment, selects
+        a valid GPU card, creates the resources and launches the GUI.\\
+        \\{\bf Parameters}\\
+        \verb|int argc| the length of the next parameter.\\
+        \verb|char **argc| the parameters used by the OpenGL environment.\\
+
+        \vspace{1cm}
+        \subsubsection{void usage(char* program\_name)}
+        This function prints out the help message.\\
+        \\{\bf Parameters}\\
+        \verb|char* program_name|\\\mar- The name of the program to run
+    
+    \newpage
+    \subsection{CUDA Kernels}
+        \vspace{1cm}
+        \subsubsection{\_\_global\_\_ void cuda\_max(float *numbers, int N, float *partialMax)}
+        This kernel finds the maximum in buckets (sub-array) of the numbers array and
+        fills the partialMax array using the reduction method described in ~\ref{fig:reduction}.
+        \\\\{\bf Parameters}\\
+        \verb|float *numbers|\\\mar- The numbers to find the maximum of.\\
+        \verb|int N|\\\mar- The length of the array of numbers.\\
+        \verb|float *partialMax|\\\mar- The list containing the maximum of the buckets.
+
+        \vspace{1cm}
+        \subsubsection{\_\_global\_\_ void cuda\_probability\_to\_map(float *probabilities, int n,
+        float *map)}
+        This kernel maps the coordinate array to the probability array.\\
+        \\{\bf Parameters}\\
+        \verb|float *probabilities|\\\mar- The probability set of each wave function.\\
+        \verb|int n|\\\mar- The number of wave functions.\\
+        \verb|float *map|\\\mar- The array that will be filled with probabilities
+
+        \vspace{1cm}
+        \subsubsection{\_\_global\_\_ void cuda\_probability(float *p, in N, float x, float y,
+        float *probability)}
+        This kernel finds the probability of finding the particle in a certain position.\\
+        \\{\bf Parameters}\\
+        \verb|float *p|\\\mar- The probability set of each wave function.\\
+        \verb|int N|\\\mar- The number of energy levels.\\
+        \verb|float x|\\\mar- The x-coordinate of the particle.\\
+        \verb|float y|\\\mar- The y-coordinate of the particle.\\
+        \verb|float *probability|\\\mar- The variable to write the probability to.
+
+        \vspace{1cm}
+        \subsubsection{\_\_global\_\_ void kernel(uchar4 *ptr, float *probabilities, int N,
+        float max\_proba)}
+        This kernel fills the pixel array with the corresponding colors to display them.\\
+        \\{\bf Parameters}\\
+        \verb|uchar4 *ptr|\\\mar- The array of pixels\\
+        \verb|float *probabilities|\\\mar- The array of probabilities of each wave function.\\
+        \verb|int N|\\\mar- The number of wave functions.\\
+        \verb|gloat max_proba|\\\mar- The highest probability in the space.
+
+    \newpage
+    \subsection{CUDA Device Functions}
+        \vspace{1cm}
+        \subsubsection{\_\_device\_\_ float cuda\_probability\_1d\_device(int n, float x)}
+        This function finds the probability of finding the particle in one dimension 
+        at the position x and at the energy level n.\\
+        \\{\bf Parameters}\\
+        \verb|int n|\\\mar- The energy level of the particle\\
+        \verb|float x|\\\mar- The position of the particle\\
+        \\{\bf Returns}\\
+        \verb|float|, the probability.
+
+        \vspace{1cm}
+        \subsubsection{\_\_device\_\_ float cuda\_probability\_1d\_device(float *probabilities,
+        int n, float x, float y)}
+        This function finds the probability of finding the particle at a fixed position
+        given a set of probabilities, the number of energy levels and the position.\\
+        \\{\bf Parameters}\\
+        \verb|float *probability|\\\mar- The probability of each energy level.\\
+        \verb|int n|\\\mar- The number of energy levels.\\
+        \verb|float x|\\\mar- The x-coordinate of the particle.\\
+        \verb|float y|\\\mar- The y-coordinate of the particle.\\
+        \\{\bf Returns}\\
+        \verb|float|, the probability.
+
+        \vspace{1cm}
+        \subsubsection{\_\_device\_\_ float energy(float mass, int n)}
+        This function finds the energy of the particle at a precise energy level.\\
+        \\{\bf Parameters}\\
+        \verb|float mass|\\\mar- The mass of the particle.\\
+        \verb|int n|\\\mar- The energy level the particle is at.\\
+        \\{\bf Returns}\\
+        \verb|float|, the energy at the energy level n.
+
+        \vspace{1cm}
+        \subsubsection{\_\_device float highest\_energy(float mass, int n)}
+        This function finds the highest energy the particle can reach. This function
+        is used for color mapping described in ~\ref{sec:colormap}.\\
+        \\{\bf Parameters}\\
+        \verb|float mass|\\\mar- The mass of the particle.\\
+        \verb|int n|\\\mar- The highest energy level the particle can reach.\\
+        \\{\bf Returns}\\
+        \verb|float|, the highest energy
 
 \newpage
 \section{Results}
+    \subsection{Screenshots}
+    These are some screenshots taken from the simulation. Only 5 wave functions are illustrated.\\
+    \begin{table}[ht]
+        \begin{center}
+        \begin{tabular}{c c c}
+            \includegraphics[width=3.5cm]{graphics/result1.png} &
+            \includegraphics[width=3.5cm]{graphics/result3.png} &
+            \includegraphics[width=3.5cm]{graphics/result2.png} \\
+            1 & 2 & 3 \\\\
+            \includegraphics[width=3.5cm]{graphics/result6.png} &
+            \includegraphics[width=3.5cm]{graphics/result4.png} &
+            \includegraphics[width=3.5cm]{graphics/result5.png} \\
+            4 & 5 & 6
+        \end{tabular}
+        \end{center}
+    \end{table}\\
+    From observing the screenshots we can generate a table that encapsulate the wave functions most visible
+    in the screenshots
+    \begin{table}[ht]
+        \begin{center}
+            \begin{tabular}{| r | c | c | c | c | c |}
+            \hline
+            Screenshot & 1 & 2 & 3 & 4 & 5 \\ \hline
+            1 & $\times$ & $\times$ & & & \\ \hline
+            2 & $\times$ & $\times$ & $\times$ & & $\times$ \\ \hline
+            3 & & $\times$ & $\times$ & $\times$ & \\ \hline
+            4 & & $\times$ & $\times$ & & $\times$ \\ \hline
+            5 & & & $\times$ & & $\times$ \\ \hline
+            6 & $\times$ & & & & $\times$ \\ \hline
+            \end{tabular}
+        \end{center}
+    \end{table}
+
+    \subsection{Benefits}
+    Thanks to this simulation the problem of the Particle in a box is now much clearer
+    to me, and I was able to understand more about the topic.\\\\
+    As well it helped me visualize another problem related and that is \emph{Heisenberg's
+    Uncertainty Principle} described mathematically as $\delta_x\delta_p \geq \frac{\hbar}{2}$.
+    As described in section ~\ref{sec:brightness} the more intense the color at a pixel is,
+    the higher the probability. For higher the quantum number is the larger the energy, and
+    since the energy is directly related to the momentum of the particle we should expect
+    a large uncertainty in the position of the particle. That is perfectly illustrated in this
+    simulation, as the graphics become red the higher the energy is and we can see numerous
+    bright spots on the canvas, meaning there is a high probability for the particle to exist
+    in many positions, therefore agreeing with Heisenberg's Uncertainty Principle.
 
 \newpage
 \section{Code License: GNU General Public License}
