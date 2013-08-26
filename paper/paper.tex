@@ -18,18 +18,18 @@
 \newpage
 
 \section{Background, Motive and Experiment}
-The particle in box problem is one of the first problems given to undergraduate
+The particle in a box problem is one of the first problems given to undergraduate
 students in a course about quantum mechanics. It showcases how the energy
 of particles is quantized and it highlights the probabilistic nature of
 quantum mechanics, especially with the idea that the particle is not located in
 a fixed position but it has a likelihood of existing at any point in space.\\\\
 The particle in a box is an experiment in which a particle is stuck inside a
-box and cannot escape. The energy outside this box is $\infty$ while inside it
-is $0$. The particle thus moves inside the box of dimensions $L$x$L$.\\\\
+box and cannot escape. The energy outside this box is $\infty$ while it
+is $0$ inside. The particle thus moves inside the box of dimensions $L$x$L$.\\\\
 Trying to imagine how these probabilities are scattered in the box is hard and one
 can't do without a simulation of the physical properties of the particle
 (position, energy and momentum).\\\\
-In this simulation I try and simulate the "particle in a box" problem to
+In this simulation I try to simulate the "particle in a box" problem to
 display the probabilities of the position and the energy of the particle at
 each state.
 
@@ -58,7 +58,7 @@ essential variables I will base my results on the video.\\
             \left ( \frac{-\hbar^2}{2m} \nabla^2 + V \right ) \Psi(x,t)
             = i\hbar\frac{\partial}{\partial t}\Psi(x, t)   
         \end{equation}
-        The time independent Schrodinger equation is given as:
+        The time independent Schrodinger equation, which can be found from \ref{eq:time_dependant_equation}  is given as:
         \begin{equation} \label{eq:time_independent_equation}
             \left ( \frac{-\hbar^2}{2m} \nabla^2 + V \right ) \Phi(x)
             = E \Phi(x)
@@ -141,7 +141,7 @@ essential variables I will base my results on the video.\\
             Y(y) &= C\cos(k_y y) + D \sin(k_y y) \\
         \end{align*}
         Plugging (\ref{eq:suppose_twod_solution}) in (\ref{eq:time_independent_equation})
-        and doing similar operations as \emph{~\ref{sec:wave_equation_oned}} we get
+        and doing similar operations as ~\ref{sec:wave_equation_oned} we get
         the following solution:
         \begin{equation} \label{eq:twod_solution}
             \Phi(x, y) = \frac{2}{L} \sin\left( \frac{n_x\pi}{L}x\right)
@@ -149,7 +149,7 @@ essential variables I will base my results on the video.\\
         \end{equation}
 
         \subsubsection{Energy in two dimensions}
-        Doing the same steps as \emph{~\ref{sec:energy_oned}} we find that the energy has
+        Doing the same steps as ~\ref{sec:energy_oned} we find that the energy has
         become:
         \begin{align}
             E_{n_x, n_y} &= \frac{\hbar^2 \pi^2}{2mL^2} (n^2_x + n^2_y)
@@ -161,7 +161,7 @@ essential variables I will base my results on the video.\\
         \end{align*}
 
         \subsubsection{Probability function of the position}
-        Similar to section \emph{~\ref{sec:position_oned}} to find the
+        Similar to section ~\ref{sec:position_oned} to find the
         probability of finding the particle inside the box of size
         $\epsilon$x$\epsilon$ we integrate the wave function inside a
         box of center $(x,y)$ and width $\epsilon$.
@@ -179,7 +179,7 @@ essential variables I will base my results on the video.\\
         \subsection{Generalizing the time-independent solution}
         The equation that we have found so far depends on two quantum numbers
         $n_x$ and $n_y$ and describes the particle for these energy levels only.
-        However the final time-dependant equation is a combination of many of these
+        However the final time-independent equation is a combination of many of these
         equations. The final time-independent equation is:
         \begin{equation} \label{eq:general_position}
             \Phi(x,y) = \sum_{n} c_n \Phi_{n_x, n_y}(x,y)
@@ -196,7 +196,7 @@ essential variables I will base my results on the video.\\
 \newpage
 
 \section{Implementation}
-    \subsection{Synopsis}
+    \subsection{Synopsis} \label{sec:synopsis}
     This simulation will display the probability of finding the particle in sub-boxes in the box
     as well as display the energy in the sub-box of width $\epsilon$. Each frame displays the
     particle with a new set of probabilities for each energy level.\\\\
@@ -214,7 +214,7 @@ essential variables I will base my results on the video.\\
         \item CUDA device functions start with \texttt{cuda\_} and end with \texttt{\_device}.\\
               For example \texttt{cuda\_probability\_1d\_device}
         \item Tiny mathematical and physical constants, such as $\hbar$ are expressed
-              as float numbers without their orders.\\ For example $\hbar = 1.054\cdot10^{-34}$
+              as floating numbers without their orders.\\ For example $\hbar = 1.054\cdot10^{-34}$
               is defined as \texttt{\#define HBAR 1.054}
     \end{itemize}
 
@@ -226,13 +226,11 @@ essential variables I will base my results on the video.\\
         a matter of mapping the probabilities from $[0, 1]$ to $[0, 255]$.\\\\
         However $\epsilon$ is a small number, so the probability is always small; usually
         less than $0.1\%$. Therefore we need to find the highest probability in the space
-        and remap from $[0, \text{max}]$ to $[0, 255]$. At first I have tried to brute force
-        the problem exploiting my GPU using functions to find maximums using reduction. But
+        and remap from $[0, \text{max}]$ to $[0, 255]$. At first a bruteforce solution was adopted
+        exploiting my GPU to find maximums using reduction. But
         the process of finding the highest probability of a particle with 10 energy levels
-        inside a box divided into 262,144 boxes took around 28ms. Allowing me to get only
-        35fps in the animation.\\
-        A new solution needed to be adopted and I went over the equations again to try and
-        find that maximum analytically. My results are:\\\\
+        inside a box divided into 262,144 boxes took around 28ms.\\
+        A new solution needed to be adopted, going over the mathematics again, a solution came out:\\\\
         For $p(\alpha)$ to be maximal
         $$\frac{\epsilon}{L} - \frac{1}{n_{\alpha}\pi} \sin\left(\frac{n_{\alpha}\pi}{L}\epsilon\right)
         \cos\left(2\frac{n_{\alpha}\pi}{L}\alpha\right)$$
@@ -241,27 +239,26 @@ essential variables I will base my results on the video.\\
         level is: 
         $$\frac{\epsilon}{L} + \frac{1}{n_{\alpha}\pi} \sin(\frac{n_{\alpha}\pi}{L}\epsilon)$$
         Following similar analysis we can deduce that the highest probability (denoted by
-        $m$) is close to,
-        but not exactly:
+        $m$) is close to, but not exactly:
         $$m = m_x . m_y$$
         $$m_{\alpha} = \frac{\epsilon}{L} + \sum_i \left ( c^2_i \frac{1}{n_{\alpha_i}\pi}
         \sin\left(\frac{n_{\alpha_i}\pi}{L}\epsilon\right) \right )$$\\\\
         \textbf{UPDATE} After implementing and testing the algorithm the uncertainty in the algorithm
         has proved to be overwhelming and the probabilities' range was no longer $[0, 1]$ but much smaller.
         Therefore a fallback was needed.\\\\
-        The approach followed was a bruteforce solution where we compute the probabilities at each at each
+        The approach followed was the bruteforce solution described above where we compute the probabilities at each
         pixel and search for the largest. However to make the searching faster a reduction algorithm
-        was adopted to speed it up. The algorithm creates a much smaller array in which it stores
+        was adopted. The algorithm creates a much smaller array in which it stores
         the maximum of a chunk of the original array. Then on the CPU we loop over the results (which are
         usually 32) and pick the maximum of these. The following illustration describes how the maximum
-        reduction algorithm works
+        reduction algorithm works for a sub-array.
         \begin{figure}[hb]
             \label{fig:reduction}
             \centering
                 \includegraphics[width=8cm]{graphics/max_reduction.png}
             \caption{Finding the maximum element in an array using reduction}
         \end{figure}
-        The fact that this algorithm was used adds a restriction on the dimensions of the window. The height
+        The fact that this algorithm was used adds a restriction to the dimensions of the window. The height
         and the width of the window need to be a power of 2 for this algorithm to work effectively.
         No solution has been made up yet to generalize the dimensions of the window.
         
@@ -273,7 +270,7 @@ essential variables I will base my results on the video.\\
         \begin{bmatrix} 255E \\ 20 \\ 255(1-E) \end{bmatrix} $$
         Where $P(x, y)$ is the probability of finding the particle at $(x, y)$ and between
         0 and 1. And $E$ is the energy remapped between 0 and 1. \\\\
-        To problem of remapping the energy is easy to solve. Through mathematical analysis
+        The problem of remapping the energy is easy to solve. Through mathematical analysis
         we can show that the highest energy we can find is
         $$ E_{max} = (n^2_{max_x} + n^2_{max_y})\frac{\hbar^2\pi^2}{2mL^2} $$
         And therefore we can remap any energy we find to a value in the interval $[0, 1]$
@@ -282,8 +279,8 @@ essential variables I will base my results on the video.\\
         \subsection{Next set of probabilities}
         \label{sec:nextproba}
         Every frame in the animation consists of a new set of probabilities close to the ones of the
-        previous frame. A problem came up and that is how to generate new set of probabilities close
-        to the ones in the previous frame to insure the smooth animation between the frames.\\\\
+        previous frame. A problem came up and it is how to generate a new set of probabilities close
+        to the ones in the previous frame given a time parameter to insure the smooth animation between the frames.\\\\
         The model adopted to insure the smoothness and the continuity in the probabilities consists
         of multiple sine waves where the period of one is 10 times more than its neighbor and so on.
         If plotted, the model looks like the following: (the sines were stretched vertically for a better
@@ -330,16 +327,16 @@ essential variables I will base my results on the video.\\
             P_{n}(t) = \left| sin\left( \frac{10^{1-n}}{\pi}t \right)\right|
         \end{align}
 
-    \subsection{(G)UI}
-    The GUI will be farely simple, a window where the simulation is drawn on. The user can
-    control the simulation by keystrokes listed bellow.
+    \subsection{GUI and Configuration}
+    The GUI is simple; it consists of a window where the simulation is drawn on
+    as described in ~\ref{sec:synopsis}. The user can control the simulation using keystrokes listed bellow.
     \begin{center}
         \begin{tabular}{|r|r|}
         \hline
-            . & Increase the time offset \\ \hline
-            , & Decrease the time offset \\ \hline
+            . & Increase the time offset (Animation runs faster) \\ \hline
+            , & Decrease the time offset (Animation runs slower) \\ \hline
             SPACE & Toggle pausing \\ \hline
-            0 & Reset the animate (t = 0) \\ \hline
+            0 & Reset the animation (t = 0) \\ \hline
             ESC & Quit the simulation \\ \hline
         \end{tabular}
     \end{center}
@@ -595,8 +592,7 @@ essential variables I will base my results on the video.\\
         \end{tabular}
         \end{center}
     \end{table}\\
-    From observing the screenshots we can generate a table that encapsulate the wave functions most visible
-    in the screenshots
+    From observing the screenshots we can generate a table that encapsulates the wave functions most visible.
     \begin{table}[ht]
         \begin{center}
             \begin{tabular}{| r | c | c | c | c | c |}
@@ -615,10 +611,10 @@ essential variables I will base my results on the video.\\
     \subsection{Benefits}
     Thanks to this simulation the problem of the Particle in a box is now much clearer
     to me, and I was able to understand more about the topic.\\\\
-    As well it helped me visualize another problem related and that is \emph{Heisenberg's
+    It helped me visualize another related problem as well, which is \emph{Heisenberg's
     Uncertainty Principle} described mathematically as $\delta_x\delta_p \geq \frac{\hbar}{2}$.
     As described in section ~\ref{sec:brightness} the more intense the color at a pixel is,
-    the higher the probability. For higher the quantum number is the larger the energy, and
+    the higher the probability. The higher the quantum number is, the larger the energy, and
     since the energy is directly related to the momentum of the particle we should expect
     a large uncertainty in the position of the particle. That is perfectly illustrated in this
     simulation, as the graphics become red the higher the energy is and we can see numerous

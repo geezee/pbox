@@ -413,8 +413,9 @@ void display() {
     total_time += diff;
     frames++;
 
-    printf("%-5.3f (Average time per frame %.5f ms) (+%.3f)\r",
+    printf("%-5.3f (Average time per frame %.5f ms) (+%.3f)",
            t, total_time/frames, INCREASE_TIME);
+    for(int i=0;i<200;i++) printf("\r");
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
@@ -528,14 +529,18 @@ void run(int argc, char **argv) {
 }
 
 
-
+/**
+ * Prints out the help message of the program
+ *
+ * @param char      the name of the program
+*/
 void usage(char* program_name) {
     printf("A particle in a box simulation\n");
     printf("Usage: %s n\n", program_name);
     printf("n\tThe number of energy levels to simulate (default is 5)\n\n");
     printf("Pressing these following keys will:\n");
-    printf(".\tIncrease the time delay\n");
-    printf(",\tDescrease the time delay\n");
+    printf(".\tIncrease the time offset\n");
+    printf(",\tDescrease the time offset\n");
     printf("<space>\tToggle pausing\n");
     printf("0\tReset the animation\n");
     printf("<esc>\tQuit\n\n");
