@@ -3,6 +3,7 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include <curses.h>
 
 #define GL_GLEXT_PROTOTYPES
 #include <GL/glut.h>
@@ -40,6 +41,10 @@ int      frames        = 0;              // number of frames
 float    total_time    = 0.0f;           // total time
 int      PAUSE         = 0;              // whether the animation is paused
 
+/** ncurses variables */
+WINDOW* window;
+int ncols, nrows;
+
 
 /**
  * Function headers
@@ -59,6 +64,9 @@ void  launch_kernel(uchar4);
 void  runCuda(cudaGraphicsResource **resource);
 void  run(int, char**);
 void  usage(char*);
+/** For ncurses */
+void  clear_row(int);
+void  cmd_display();
 
 
 /**
@@ -385,64 +393,34 @@ void initGL(int *argc, char **argv) {
 }
 
 /**
- * The display function that runs on every iteration
-*/
-void display() {
-    cudaEvent_t start, stop;
-    cudaEventCreate(&stop);
-    cudaEventCreate(&start);
-    cudaEventRecord(start, 0);
-    
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, buffer);
-    glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, DIM*DIM*4, NULL, GL_DYNAMIC_DRAW_ARB);
-    cudaGraphicsGLRegisterBuffer(&resource, buffer, cudaGraphicsMapFlagsNone);
-    glClear(GL_COLOR_BUFFER_BIT);
-    runCuda(&resource);
-    glDrawPixels(DIM, DIM, GL_RGBA, GL_UNSIGNED_BYTE, 0);
-
-    glutSwapBuffers();
-    t += (1-PAUSE)*INCREASE_TIME;
-
-    cudaEventRecord(stop, 0);
-    cudaEventSynchronize(stop);
-    float diff;
-    cudaEventElapsedTime(&diff, start, stop);
-
-    glutPostRedisplay();
-
-    total_time += diff;
-    frames++;
-
-    printf("%-5.3f (Average time per frame %.5f ms) (+%.3f)",
-           t, total_time/frames, INCREASE_TIME);
-    for(int i=0;i<200;i++) printf("\r");
-
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-
-}
-
-/**
  * Manage key strokes
  *
  * @param unsigned char         the character pressed
- * @param int                   x-location of the pressign
- * @param int                   y-location of the pressign
+ * @param int                   x-location of the pressing
+ * @param int                   y-location of the pressing
 */
 void key(unsigned char k, int x, int y) {
     switch(k) {
         case 27:
             free_resources();
             printf("\n");
+            endwin();
             exit(0);
         case '.':
             INCREASE_TIME *= 1.05; break;
         case ',':
-            INCREASE_TIME *= 0.95; break;
+            INCREASE_TIME = MAX(0.01, INCREASE_TIME*0.95); break;
         case '0':
             t = 0.01f; break;
         case ' ':
-            PAUSE = 1-PAUSE; if(PAUSE == 1) glutPostRedisplay(); break;
+            PAUSE = 1-PAUSE;
+            if(PAUSE == 1) {
+                glutPostRedisplay();
+            } break;
+        case 'm':
+            t += INCREASE_TIME; frames++; glutPostRedisplay(); break;
+        case 'n':
+            t -= INCREASE_TIME; frames--; glutPostRedisplay(); break;
     }
 }
 
@@ -535,22 +513,163 @@ void run(int argc, char **argv) {
  * @param char      the name of the program
 */
 void usage(char* program_name) {
-    printf("A particle in a box simulation\n");
-    printf("Usage: %s n\n", program_name);
-    printf("n\tThe number of energy levels to simulate (default is 5)\n\n");
-    printf("Pressing these following keys will:\n");
-    printf(".\tIncrease the time offset\n");
-    printf(",\tDescrease the time offset\n");
-    printf("<space>\tToggle pausing\n");
-    printf("0\tReset the animation\n");
-    printf("<esc>\tQuit\n\n");
+    int y = 7+p.energy_levels/2+2;
+    attron(COLOR_PAIR(2));
+    move(y, 0);
+    clear_row(y);
+    printw("Keyboard Shortcuts");
+    attroff(COLOR_PAIR(2));
+    move(y+1, 0);
+    attron(COLOR_PAIR(5));
+    printw(".\t\tIncrease the time offset\n");
+    printw(",\t\tDescrease the time offset\n");
+    printw("n\t\tGo back one frame\n");
+    printw("m\t\tGo forward one framed\n");
+    printw("<space>\t\tToggle pausing\n");
+    printw("0\t\tReset the animation\n");
+    printw("<esc>\t\tQuit\n\n");
+    attroff(COLOR_PAIR(5));
+    attron(COLOR_PAIR(2));
+    clear_row(y+9);
+    printw("Usage");
+    attroff(COLOR_PAIR(2));
+    move(y+10, 0);
+    attron(COLOR_PAIR(5));
+    printw("%s [n]\nDESCRIPTION\n  n\n\    The number of wave functions to simulate", program_name);
+    attroff(COLOR_PAIR(5));
 }
 
+void clear_row(int y) {
+    move(y, 0);
+    for(int i=0;i<ncols;i++) {
+        move(y, i);
+        delch();
+        insch(' ');
+    }
+    move(y, 0);
+}
+
+void cmd_display() {
+    // Draw the title
+    attron(COLOR_PAIR(2));
+    clear_row(0);
+    printw("Simulating a two dimensional box in a square quantum box");
+
+    // Draw the stats about the program
+    attron(COLOR_PAIR(4));
+    move(2, 0); printw("Simulating with %d wave functions", p.energy_levels);
+    attroff(COLOR_PAIR(4));
+    attron(COLOR_PAIR(2));
+    clear_row(3);
+    move(3, 0); printw("Time");
+    move(3, 1*ncols/4); printw("Frame");
+    move(3, 2*ncols/4); printw("Time per frame");
+    move(3, 3*ncols/4); printw("Increment");
+    attroff(COLOR_PAIR(2));
+    attron(COLOR_PAIR(5));
+    move(4, 0); printw("%.2f", t);
+    move(4, 1*ncols/4); printw("%d", frames);
+    move(4, 2*ncols/4); printw("%.2fms", total_time/frames);
+    move(4, 3*ncols/4); printw("%.5f", INCREASE_TIME);
+    attroff(COLOR_PAIR(5));
+
+    // Write out the probabilities
+    attron(COLOR_PAIR(2));
+    move(6, 0);
+    clear_row(6);
+    for(int i=0;i<4;i++) {
+        move(6, i*ncols/4);
+        printw(i%2 == 0 ? "Wave number" : "Probability");
+    }
+    attroff(COLOR_PAIR(2));
+    move(6, ncols/2-ncols/16);
+    delch();
+    insch(' ');
+
+    attron(COLOR_PAIR(5));
+    for(int i=0;i<p.energy_levels;i++) {
+        move(7+i/2, i%2 * ncols/2);
+        printw("%d", i+1);
+        move(7+i/2, i%2 * ncols/2 + ncols/4);
+        printw("%.2f%%", 100*p.probabilities[i]);
+    }
+    attroff(COLOR_PAIR(5));
+
+    move(0, ncols);
+
+    refresh();
+}
+
+/**
+ * The display function that runs on every iteration
+*/
+void display() {
+    cudaEvent_t start, stop;
+    cudaEventCreate(&stop);
+    cudaEventCreate(&start);
+    cudaEventRecord(start, 0);
+    
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, buffer);
+    glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, DIM*DIM*4, NULL, GL_DYNAMIC_DRAW_ARB);
+    cudaGraphicsGLRegisterBuffer(&resource, buffer, cudaGraphicsMapFlagsNone);
+    glClear(GL_COLOR_BUFFER_BIT);
+    runCuda(&resource);
+    glDrawPixels(DIM, DIM, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+    glutSwapBuffers();
+
+    t += (1-PAUSE)*INCREASE_TIME;
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(stop);
+    float diff;
+    cudaEventElapsedTime(&diff, start, stop);
+
+    glutPostRedisplay();
+
+    if(!PAUSE) {
+        total_time += diff;
+        frames++;
+    }
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
+    cmd_display();
+}
+
+void init_curses() {
+    /** Initialize the ncurses variables */
+    window = initscr();
+    start_color();
+    cbreak();
+    noecho();
+    getmaxyx(window, nrows, ncols);
+
+    /** Initialize the colors that will be used in ncurses */
+    init_pair(1, COLOR_BLACK, COLOR_BLACK); // background
+    init_pair(2, COLOR_WHITE, COLOR_BLUE);  // titles
+    init_pair(3, COLOR_RED, COLOR_BLACK);   // errors
+    init_pair(4, COLOR_GREEN, COLOR_BLACK); // messages
+    init_pair(5, COLOR_WHITE, COLOR_BLACK); // text
+
+    clear();
+    // Fill the background
+    attron(COLOR_PAIR(1));
+    for(int x=0;x<nrows;x++) {
+        for(int y=0;y<ncols;y++) {
+            move(x, y);
+            delch();
+            insch(' ');
+        }
+    }
+    attroff(COLOR_PAIR(1));
+    refresh();
+}
 
 ///////////////////////////// MAIN FUNCTION //////////////////////////////////
 int main(int argc, char *argv[]) { 
-    usage(argv[0]);
     int N = 5;
+
     if(argc > 1) {
         if(atoi(argv[1]) > 0)
             N = atoi(argv[1]);
@@ -558,8 +677,11 @@ int main(int argc, char *argv[]) {
             printf("\033[01;31mWARNING: You are trying to simulate a negative");
             printf("number of wave functions. Will fall back to %d (default)\033[22;m\n",N);
     }
-    printf("\033[22;32mSimulating with %d wave functions\033[22;m\n", N);
+
     create_particle(&p, N, 0.003f);
+    init_curses();
+    usage(argv[0]);
+
     run(argc, argv);
     return 0;
 }
