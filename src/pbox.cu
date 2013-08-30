@@ -7,7 +7,6 @@
 
 #define GL_GLEXT_PROTOTYPES
 #include <GL/glut.h>
-
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
 
@@ -67,6 +66,7 @@ void  usage(char*);
 /** For ncurses */
 void  clear_row(int);
 void  cmd_display();
+void  init_curses();
 
 
 /**
@@ -403,7 +403,6 @@ void key(unsigned char k, int x, int y) {
     switch(k) {
         case 27:
             free_resources();
-            printf("\n");
             endwin();
             exit(0);
         case '.':
@@ -418,9 +417,9 @@ void key(unsigned char k, int x, int y) {
                 glutPostRedisplay();
             } break;
         case 'm':
-            t += INCREASE_TIME; frames++; glutPostRedisplay(); break;
+            t += INCREASE_TIME; glutPostRedisplay(); break;
         case 'n':
-            t -= INCREASE_TIME; frames--; glutPostRedisplay(); break;
+            t -= INCREASE_TIME; glutPostRedisplay(); break;
     }
 }
 
@@ -535,10 +534,13 @@ void usage(char* program_name) {
     attroff(COLOR_PAIR(2));
     move(y+10, 0);
     attron(COLOR_PAIR(5));
-    printw("%s [n]\nDESCRIPTION\n  n\n\    The number of wave functions to simulate", program_name);
+    printw("%s [n]\nDESCRIPTION\n  n\n    The number of wave functions to simulate", program_name);
     attroff(COLOR_PAIR(5));
 }
 
+/**
+ * Function that clears the rows
+ */
 void clear_row(int y) {
     move(y, 0);
     for(int i=0;i<ncols;i++) {
@@ -549,6 +551,9 @@ void clear_row(int y) {
     move(y, 0);
 }
 
+/**
+ * Create the command line interface
+*/
 void cmd_display() {
     // Draw the title
     attron(COLOR_PAIR(2));
@@ -596,7 +601,6 @@ void cmd_display() {
     attroff(COLOR_PAIR(5));
 
     move(0, ncols);
-
     refresh();
 }
 
@@ -637,6 +641,10 @@ void display() {
     cmd_display();
 }
 
+/**
+ * Function that initializes the curses library
+ * Sets up colors and fills the background
+*/
 void init_curses() {
     /** Initialize the ncurses variables */
     window = initscr();
@@ -671,11 +679,12 @@ int main(int argc, char *argv[]) {
     int N = 5;
 
     if(argc > 1) {
-        if(atoi(argv[1]) > 0)
+        if(atoi(argv[1]) > 0) {
             N = atoi(argv[1]);
-        else
-            printf("\033[01;31mWARNING: You are trying to simulate a negative");
-            printf("number of wave functions. Will fall back to %d (default)\033[22;m\n",N);
+        } else {
+            printf("\033[01;31mWARNING: You are trying to simulate a negative ");
+            printf("number of wave functions.\nWill fall back to %d (default)\033[22;m\n",N);
+        }
     }
 
     create_particle(&p, N, 0.003f);

@@ -327,14 +327,16 @@ essential variables I will base my results on the video.\\
             P_{n}(t) = \left| sin\left( \frac{10^{1-n}}{\pi}t \right)\right|
         \end{align}
 
-    \subsection{GUI and Configuration}
+    \subsection{GUI, Command line UI and User Configuration}
     The GUI is simple; it consists of a window where the simulation is drawn on
     as described in ~\ref{sec:synopsis}. The user can control the simulation using keystrokes listed bellow.
     \begin{center}
-        \begin{tabular}{|r|r|}
+        \begin{tabular}{|r|l|}
         \hline
             . & Increase the time offset (Animation runs faster) \\ \hline
             , & Decrease the time offset (Animation runs slower) \\ \hline
+            n & Go back one frame \\ \hline
+            m & Go forward one frame\\ \hline
             SPACE & Toggle pausing \\ \hline
             0 & Reset the animation (t = 0) \\ \hline
             ESC & Quit the simulation \\ \hline
@@ -343,7 +345,20 @@ essential variables I will base my results on the video.\\
     As well, the user can control the number of wave functions that are being simulated using
     command line arguments as follow
     \begin{verbatim}pbox n\end{verbatim}
-    Where \verb|n| is the number of wave functions the user wishes to simulate.
+    Where \verb|n| is the number of wave functions the user wishes to simulate.\\\\
+    {\bf UDPATE} A command line UI is used to display in an ordered fashion the state of the simulation
+    (time, energy levels, average time per frame and the increment used by the animation), as well it
+    displays the probabilities for each wave function and keyboard shortcuts and how to use the application.\\
+    The command line UI was built using the \verb|curses| library available on Linux, and in the latest
+    release of Xcode but unavailable directly on Windows\footnote{PDCurses is an alternative suggested
+    by many http://pdcurses.sourceforge.net/. The author did not test it!}.\\
+    This is a screenshot of the command line UI.\\\\
+    \begin{figure}[hb]
+        \centering
+        \includegraphics[width=14cm]{graphics/cmdui.png}
+        \caption{Command-Line UI}
+    \end{figure}
+
 
 \newpage
 \section{API}
@@ -374,6 +389,8 @@ essential variables I will base my results on the video.\\
         \item \verb|int frames|\\\mar- The number of frames.
         \item \verb|float total_time|\\\mar- The total time.
         \item \verb|int PAUSE|\\\mar- Whether the animation is paused.
+        \item \verb|WINDOW* window|\\\mar- The window variable used by \verb|ncurses| library.
+        \item \verb|int ncols, nrows|\\\mar- The number of cols and rows in the \verb|window| variable.
     \end{itemize}
 
     \newpage
@@ -488,6 +505,23 @@ essential variables I will base my results on the video.\\
         This function prints out the help message.\\
         \\{\bf Parameters}\\
         \verb|char* program_name|\\\mar- The name of the program to run
+
+        \vspace{1cm}
+        \subsubsection{void clear\_row(int y)}
+        This function uses the \verb|ncuses| library to clear a row, i.e. to fill it with
+        empty characters with the background attitude.\\
+        \\{\bf Parameters}\\
+        \verb|int y|\\\mar- The row number to clear.
+
+        \vspace{1cm}
+        \subsubsection{void cmd\_display()}
+        This function creates and fills the Command line UI using the \verb|ncurses| library.
+
+        \vspace{1cm}
+        \subsubsection{void init\_curses()}
+        This function initiates the \verb|curses| environment and fills the variables \verb|window|,
+        \verb|nrows|, \verb|ncols|, creates the colors for the background and text messages.
+
     
     \newpage
     \subsection{CUDA Kernels}
